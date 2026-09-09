@@ -12,6 +12,8 @@ import joblib
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import mlflow
+import mlflow.sklearn
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -85,7 +87,11 @@ def _append_metrics(log_path: str, entry: dict) -> None:
 # ── Main entry ────────────────────────────────────────────────────────────────
 
 def train_pipeline(config: dict) -> dict:
-    cfg = config["pipeline"]
+    cfg      = config["pipeline"]
+    cfg_mlfl = config["mlops"]
+
+    mlflow.set_tracking_uri(cfg_mlfl.get("mlflow_tracking_uri", "sqlite:///mlflow_store/mlruns.db"))
+    mlflow.set_experiment(cfg_mlfl.get("mlflow_experiment", "ml-pipeline"))
 
     df = pd.read_csv(config["data"]["processed_path"])
     log.info("Loaded processed dataset: %d rows × %d cols", *df.shape)
@@ -117,44 +123,67 @@ def train_pipeline(config: dict) -> dict:
     best_scores = cv_results[best_name]
     log.info("Selected: %s", best_name)
 
-    # ── Final fit on full training set ───────────────────────────────────────
-    best_pipeline = Pipeline([
-        ("preprocessor", preprocessor),
-        ("regressor",    _candidate_models(config)[best_name]),
-    ])
-    best_pipeline.fit(X_train, y_train)
+    with mlflow.start_run(run_name=best_name) as run:
+        # ── Final fit on full training set ───────────────────────────────────
+        best_pipeline = Pipeline([
+            ("preprocessor", preprocessor),
+            ("regressor",    _candidate_models(config)[best_name]),
+        ])
+        best_pipeline.fit(X_train, y_train)
 
-    # ── Hold-out evaluation ───────────────────────────────────────────────────
-    y_pred = best_pipeline.predict(X_test)
-    mae    = float(mean_absolute_error(y_test, y_pred))
-    rmse   = float(np.sqrt(mean_squared_error(y_test, y_pred)))
-    r2     = float(r2_score(y_test, y_pred))
-    log.info("Hold-out → MAE=%.4f  RMSE=%.4f  R²=%.4f", mae, rmse, r2)
+        # ── Hold-out evaluation ───────────────────────────────────────────────
+        y_pred = best_pipeline.predict(X_test)
+        mae    = float(mean_absolute_error(y_test, y_pred))
+        rmse   = float(np.sqrt(mean_squared_error(y_test, y_pred)))
+        r2     = float(r2_score(y_test, y_pred))
+        log.info("Hold-out → MAE=%.4f  RMSE=%.4f  R²=%.4f", mae, rmse, r2)
 
-    # ── Persist model ─────────────────────────────────────────────────────────
-    model_path = Path(config["mlops"]["model_path"])
-    model_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(best_pipeline, model_path)
-    log.info("Model saved → %s", model_path)
+        # ── Persist model ───────────────────────────────────────────────────────
+        model_path = Path(config["mlops"]["model_path"])
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(best_pipeline, model_path)
+        log.info("Model saved → %s", model_path)
 
-    # ── Feature importance plot ───────────────────────────────────────────────
-    _save_feature_importance(
-        best_pipeline,
-        numeric_features,
-        "02_ml_pipeline/feature_importances.png",
-    )
+        # ── Feature importance plot ─────────────────────────────────────────────
+        importance_path = "02_ml_pipeline/feature_importances.png"
+        _save_feature_importance(best_pipeline, numeric_features, importance_path)
 
-    # ── Append run to metrics log ─────────────────────────────────────────────
-    metrics = {
-        "timestamp":  datetime.now(timezone.utc).isoformat(),
-        "best_model": best_name,
-        "cv_r2_mean": float(best_scores.mean()),
-        "cv_r2_std":  float(best_scores.std()),
-        "test_mae":   mae,
-        "test_rmse":  rmse,
-        "test_r2":    r2,
-    }
-    _append_metrics(config["mlops"]["metrics_log"], metrics)
+        # ── MLflow tracking ──────────────────────────────────────────────────────
+        mlflow.log_params({
+            "model":        best_name,
+            "cv_folds":     cfg["cv_folds"],
+            "test_size":    cfg["test_size"],
+            "n_features":   len(numeric_features) + len(categorical_features),
+            **{f"model__{k}": v for k, v in _candidate_models(config)[best_name].get_params().items()},
+        })
+        mlflow.log_metrics({
+            "cv_r2_mean": float(best_scores.mean()),
+            "cv_r2_std":  float(best_scores.std()),
+            "test_mae":   mae,
+            "test_rmse":  rmse,
+            "test_r2":    r2,
+        })
+        if Path(importance_path).exists():
+            mlflow.log_artifact(importance_path)
+        mlflow.sklearn.log_model(
+            best_pipeline,
+            artifact_path="model",
+            serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_CLOUDPICKLE,
+        )
+        log.info("MLflow run logged → %s (experiment: %s)", run.info.run_id, cfg_mlfl.get("mlflow_experiment", "ml-pipeline"))
+
+        # ── Append run to metrics log (used by the agent/MCP tools) ─────────────
+        metrics = {
+            "timestamp":     datetime.now(timezone.utc).isoformat(),
+            "best_model":    best_name,
+            "cv_r2_mean":    float(best_scores.mean()),
+            "cv_r2_std":     float(best_scores.std()),
+            "test_mae":      mae,
+            "test_rmse":     rmse,
+            "test_r2":       r2,
+            "mlflow_run_id": run.info.run_id,
+        }
+        _append_metrics(config["mlops"]["metrics_log"], metrics)
 
     return metrics
 

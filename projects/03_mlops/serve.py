@@ -1,6 +1,6 @@
 """
 Stage 4 — Model Serving
-Minimal FastAPI inference endpoint for the trained regression pipeline.
+FastAPI inference endpoint for the trained regression pipeline.
 
 Usage (from projects/ directory):
     python 03_mlops/serve.py
@@ -8,42 +8,25 @@ Usage (from projects/ directory):
 Endpoints:
     GET  /health   → service status + expected feature names
     POST /predict  → returns a regression prediction
+    POST /explain  → returns per-feature SHAP contributions for a prediction
 """
-from pathlib import Path
+import logging
 
-import joblib
-import pandas as pd
 import uvicorn
-import yaml
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from model_registry import explain_one, get_config, get_features, predict_one
 
-# ── Config & model ────────────────────────────────────────────────────────────
-
-def _load_config() -> dict:
-    for search in [Path.cwd(), Path.cwd().parent]:
-        p = search / "config.yaml"
-        if p.exists():
-            with open(p) as f:
-                return yaml.safe_load(f)
-    raise FileNotFoundError("config.yaml not found. Run from the projects/ directory.")
-
-
-_config   = _load_config()
-_model    = joblib.load(_config["mlops"]["model_path"])
-# Access feature names from the preprocessor (ColumnTransformer) directly —
-# it was fitted on the named DataFrame and reliably stores input feature names.
-# Pipeline.__getattr__ proxies to the last step (regressor), which was fitted
-# on a numpy array and may not have feature_names_in_ set.
-_features = list(_model.named_steps["preprocessor"].feature_names_in_)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(message)s")
+log = logging.getLogger(__name__)
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Regression Pipeline API",
-    description="Serves predictions from the trained regression pipeline.",
+    description="Serves predictions and explanations from the trained regression pipeline.",
     version="1.0.0",
 )
 
@@ -65,35 +48,37 @@ class PredictResponse(BaseModel):
     model_used: str
 
 
+class ExplainResponse(BaseModel):
+    prediction: float
+    base_value: float
+    contributions: dict
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "expected_features": _features}
+    return {"status": "ok", "expected_features": get_features()}
 
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
-    missing = set(_features) - set(req.features)
-    if missing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Missing features: {sorted(missing)}",
-        )
+    result = predict_one(req.features)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
 
-    X    = pd.DataFrame([{f: req.features[f] for f in _features}])
-    pred = float(_model.predict(X)[0])
+    log.info("Prediction served: %.4f", result["prediction"])
+    return PredictResponse(prediction=result["prediction"], model_used=str(get_config()["mlops"]["model_path"]))
 
-    return PredictResponse(
-        prediction=pred,
-        model_used=_config["mlops"]["model_path"],
-    )
+
+@app.post("/explain", response_model=ExplainResponse)
+def explain(req: PredictRequest):
+    result = explain_one(req.features)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return ExplainResponse(**result)
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "serve:app",
-        host=_config["mlops"]["host"],
-        port=_config["mlops"]["port"],
-        reload=True,
-    )
+    cfg = get_config()["mlops"]
+    uvicorn.run(app, host=cfg["host"], port=cfg["port"])

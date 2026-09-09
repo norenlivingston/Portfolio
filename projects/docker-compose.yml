@@ -1,0 +1,26 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - pipeline-data:/app/data
+      - mlflow-store:/app/mlflow_store
+      - mlflow-artifacts:/app/mlruns
+
+  # Tracking UI reading the same store the api container just trained into.
+  mlflow:
+    build: .
+    command: mlflow ui --backend-store-uri sqlite:////app/mlflow_store/mlruns.db --host 0.0.0.0 --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-store:/app/mlflow_store
+      - mlflow-artifacts:/app/mlruns
+    depends_on:
+      - api
+
+volumes:
+  pipeline-data:
+  mlflow-store:
+  mlflow-artifacts:

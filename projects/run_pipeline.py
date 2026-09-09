@@ -29,9 +29,9 @@ log = logging.getLogger(__name__)
 
 
 def _section(title: str) -> None:
-    log.info("─" * 55)
+    log.info("-" * 55)
     log.info("  %s", title)
-    log.info("─" * 55)
+    log.info("-" * 55)
 
 
 def main(config_path: str = "config.yaml") -> None:

@@ -9,6 +9,11 @@ projects/01_eda/eda_visualizations/
 projects/02_ml_pipeline/feature_importances.png
 projects/03_mlops/metrics_log.json
 
+# MLflow tracking store
+projects/mlruns/
+projects/mlflow_store/
+projects/mlartifacts/
+
 # Python
 __pycache__/
 *.py[cod]
