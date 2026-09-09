@@ -160,7 +160,7 @@ Then open `http://localhost:5000` to compare runs, inspect hyperparameters, and 
 
 ### Containerized Serving
 
-> Not yet verified end-to-end in a live Docker environment — sanity-checked by inspection, but treat this as "should work" rather than "confirmed" until you've run it once yourself.
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/). On Windows, Docker Desktop needs WSL2, and the underlying Windows features it depends on (`Microsoft-Windows-Subsystem-Linux`, `VirtualMachinePlatform`) are disabled by default on a lot of machines even when BIOS-level virtualization is on — if Docker Desktop reports "virtualization support not detected," check both with `dism.exe /online /get-featureinfo /featurename:VirtualMachinePlatform` (and the WSL one) before assuming it's a hardware issue.
 
 ```bash
 cd projects
