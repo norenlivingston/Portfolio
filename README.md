@@ -45,15 +45,27 @@ projects/
 
 ## Quick Start
 
+**macOS / Linux**
 ```bash
-# Clone and install
 git clone https://github.com/norenlivingston/Portfolio.git
 cd Portfolio/projects
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run the full pipeline
 python run_pipeline.py
 ```
+
+**Windows (PowerShell)**
+```powershell
+git clone https://github.com/norenlivingston/Portfolio.git
+cd Portfolio\projects
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+.venv\Scripts\python.exe run_pipeline.py
+```
+(The rest of this README uses bare `python`/`pip` for brevity — on Windows, either activate the venv first with `.venv\Scripts\Activate.ps1` typed at a PowerShell prompt — not double-clicked in Explorer, which just opens it as text — or substitute `.venv\Scripts\python.exe` directly in every command below.)
 
 Sample output:
 
@@ -70,6 +82,8 @@ Sample output:
 2026-04-09 12:00:09  INFO     Hold-out → MAE=1.8  RMSE=2.4  R²=0.9991
 2026-04-09 12:00:09  INFO     MLflow run logged → a1b2c3d4... (experiment: ml-pipeline)
 ```
+
+Which model wins CV can flip between `RandomForest` and `LinearRegression` depending on installed library versions — this synthetic data is close to linear, so both score within a hair of each other. Seeing `LinearRegression` selected on your machine isn't a bug.
 
 ---
 
@@ -92,8 +106,8 @@ A pytest suite ([`projects/tests/`](projects/tests/)) exercises every stage end-
 
 ```bash
 cd projects
-pip install -r requirements-dev.txt
-pytest -v
+pip install -r requirements-dev.txt      # Windows: .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+pytest -v                                # Windows: .venv\Scripts\python.exe -m pytest -v
 ```
 
 [GitHub Actions](.github/workflows/ci.yml) runs the test suite and a full pipeline smoke test on every push and pull request to `main`.
@@ -146,6 +160,8 @@ Then open `http://localhost:5000` to compare runs, inspect hyperparameters, and 
 
 ### Containerized Serving
 
+> Not yet verified end-to-end in a live Docker environment — sanity-checked by inspection, but treat this as "should work" rather than "confirmed" until you've run it once yourself.
+
 ```bash
 cd projects
 docker compose up --build
@@ -162,14 +178,15 @@ docker run -p 8000:8000 ml-pipeline
 
 ```bash
 cd projects
-python 03_mlops/serve.py
+python 03_mlops/serve.py     # Windows: .venv\Scripts\python.exe 03_mlops\serve.py
 ```
 
+Leave that running in its own terminal — it's a server, not a one-off command. Then, in a **second** terminal:
+
+**macOS / Linux / curl**
 ```bash
-# Health check
 curl http://localhost:8000/health
 
-# Predict
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{"features": {"Feature_3": 1.2, "Feature_7": -0.5}}'
@@ -180,7 +197,18 @@ curl -X POST http://localhost:8000/explain \
   -d '{"features": {"Feature_3": 1.2, "Feature_7": -0.5}}'
 ```
 
-Interactive docs available at `http://localhost:8000/docs`.
+**Windows (PowerShell)** — `curl` is aliased to `Invoke-WebRequest` here with different flags, so use `Invoke-RestMethod` instead:
+```powershell
+Invoke-RestMethod http://localhost:8000/health
+
+$body = @{ features = @{ Feature_3 = 1.2; Feature_7 = -0.5 } } | ConvertTo-Json
+Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
+Invoke-RestMethod -Uri http://localhost:8000/explain -Method Post -Body $body -ContentType "application/json"
+```
+
+Use whatever feature names your own `/health` response shows — `select_top_features` picks different columns each pipeline run.
+
+Easiest of all, on any OS: open `http://localhost:8000/docs` in a browser for the interactive Swagger UI — click "Try it out" on any endpoint, no shell syntax required.
 
 ---
 
@@ -194,13 +222,15 @@ The agent answers natural-language questions about the trained model by calling 
 cd projects
 
 # Claude API (default) — needs ANTHROPIC_API_KEY
-export ANTHROPIC_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-...                                      # Windows: $env:ANTHROPIC_API_KEY = "sk-..."
 python 05_agents/agent.py --question "Which model was selected and why?"
 
 # Local, free, no API key — needs Ollama running
 ollama pull qwen2.5
 python 05_agents/agent.py --provider ollama --question "Which model was selected and why?"
 ```
+
+Calls to `--provider anthropic` cost real (small) money — a few tool calls for one question is a fraction of a cent, but it's not free like everything else in this repo. `--provider ollama` has no per-use cost, just a one-time multi-GB model download.
 
 Sample output:
 
@@ -235,6 +265,12 @@ The MCP server exposes the same tools to any MCP-compatible client.
 # Test in browser — no API key needed
 npx @modelcontextprotocol/inspector python 05_agents/mcp_server.py
 ```
+
+**Windows (PowerShell):** plain `npx` fails under PowerShell's default script-execution policy (`npx.ps1 cannot be loaded because running scripts is disabled`). Use `npx.cmd` instead, and point at the venv's Python explicitly rather than bare `python` so the subprocess actually has `mcp`/`shap`/etc. installed:
+```powershell
+npx.cmd @modelcontextprotocol/inspector .venv\Scripts\python.exe 05_agents\mcp_server.py
+```
+This opens a local browser UI — click the "Disconnected" toggle to connect, then the **Tools** tab to call `list_features`, `predict`, etc. directly against your trained model. The first tool call after connecting can take a while (Windows Defender scanning newly-loaded files) — if it times out, just retry.
 
 Connect to **Claude Desktop** by adding this to `claude_desktop_config.json`:
 ```json
