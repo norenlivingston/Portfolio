@@ -30,3 +30,9 @@ mlops:
   metrics_log: "03_mlops/metrics_log.json"
   host:        "0.0.0.0"
   port:        8000
+  mlflow_tracking_uri:  "sqlite:///mlflow_store/mlruns.db"  # local store; point at a server URI to share runs
+  mlflow_experiment:    "ml-pipeline"
+
+agents:
+  anthropic_model: "claude-opus-5"      # requires ANTHROPIC_API_KEY
+  ollama_model:    "qwen2.5"            # free, local — requires `ollama pull qwen2.5`

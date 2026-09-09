@@ -1,6 +1,10 @@
 # End-to-End ML Pipeline
 
-A clean, reproducible machine learning pipeline covering the full data science workflow — from raw data generation through EDA, model training, and REST API serving.
+![CI](https://github.com/norenlivingston/Portfolio/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+
+A clean, reproducible, **tested** machine learning pipeline covering the full data science workflow — from raw data generation through EDA, model training, experiment tracking, containerized serving, and an LLM agent layer on top.
 
 Built as a portfolio project to demonstrate practical ML engineering skills.
 
@@ -12,6 +16,8 @@ Built as a portfolio project to demonstrate practical ML engineering skills.
 projects/
 ├── config.yaml              ← single source of truth for all parameters
 ├── run_pipeline.py          ← runs the full pipeline with one command
+├── Dockerfile / docker-compose.yml
+├── tests/                   ← pytest suite covering every stage
 │
 ├── 00_dataset_build/
 │   └── dataset_build.py     ← generates synthetic regression data
@@ -21,15 +27,19 @@ projects/
 │   └── eda_visualizations/  ← correlation heatmap, scatter plots, distributions
 │
 ├── 02_ml_pipeline/
-│   └── pipeline.py          ← cross-validation, model selection, evaluation
+│   └── pipeline.py          ← cross-validation, model selection, MLflow tracking
 │
 ├── 03_mlops/
+│   ├── model_registry.py    ← shared config/model loading, predict + SHAP explain
 │   └── serve.py             ← FastAPI inference endpoint
 │
 └── 05_agents/
-    ├── mcp_server.py        ← MCP server exposing the pipeline as LLM tools
-    └── agent.py             ← tool-calling agent powered by Ollama (free, local)
+    ├── tools.py              ← tool definitions shared by the agent and MCP server
+    ├── mcp_server.py         ← MCP server exposing the pipeline as LLM tools
+    └── agent.py               ← tool-calling agent — Claude API or local Ollama
 ```
+
+`model_registry.py` is the single place that loads config/model and implements predict/explain — `serve.py`, `agent.py`, and `mcp_server.py` all call into it rather than duplicating logic.
 
 ---
 
@@ -37,8 +47,8 @@ projects/
 
 ```bash
 # Clone and install
-git clone https://github.com/norenlivingston/datascienceportfolio.git
-cd datascienceportfolio/projects
+git clone https://github.com/norenlivingston/Portfolio.git
+cd Portfolio/projects
 pip install -r requirements.txt
 
 # Run the full pipeline
@@ -48,7 +58,7 @@ python run_pipeline.py
 Sample output:
 
 ```
-2026-04-09 12:00:00  INFO     ───────────────────────────────────────────────────────
+2026-04-09 12:00:00  INFO     -------------------------------------------------------
 2026-04-09 12:00:00  INFO       STAGE 1 / 3 — Dataset Build
 2026-04-09 12:00:01  INFO     Saved raw dataset → data/synthetic_regression_dataset.csv
 2026-04-09 12:00:01  INFO       STAGE 2 / 3 — Exploratory Data Analysis
@@ -58,6 +68,7 @@ Sample output:
 2026-04-09 12:00:08  INFO       LinearRegression      R² = 0.9988 ± 0.0003
 2026-04-09 12:00:08  INFO     Selected: RandomForest
 2026-04-09 12:00:09  INFO     Hold-out → MAE=1.8  RMSE=2.4  R²=0.9991
+2026-04-09 12:00:09  INFO     MLflow run logged → a1b2c3d4... (experiment: ml-pipeline)
 ```
 
 ---
@@ -68,10 +79,24 @@ Sample output:
 |---|---|---|
 | **Dataset Build** | `00_dataset_build/dataset_build.py` | `data/synthetic_regression_dataset.csv` |
 | **EDA** | `01_eda/eda.py` | `data/cleaned_synthetic_regression_dataset.csv`, plots |
-| **Model Training** | `02_ml_pipeline/pipeline.py` | `best_model.pkl`, `metrics_log.json`, feature importance plot |
+| **Model Training** | `02_ml_pipeline/pipeline.py` | `best_model.pkl`, MLflow run, feature importance plot |
 | **Serving** | `03_mlops/serve.py` | REST API at `localhost:8000` |
 
 Each stage can be run independently as well as part of the full pipeline.
+
+---
+
+## Testing & CI
+
+A pytest suite ([`projects/tests/`](projects/tests/)) exercises every stage end-to-end against a tiny synthetic config (200 rows, 3-fold CV) so the whole suite runs in seconds: dataset generation determinism, feature selection/VIF/outlier-treatment logic, model training + MLflow logging, the FastAPI endpoints (via `TestClient`), and the agent/MCP tool implementations.
+
+```bash
+cd projects
+pip install -r requirements-dev.txt
+pytest -v
+```
+
+[GitHub Actions](.github/workflows/ci.yml) runs the test suite and a full pipeline smoke test on every push and pull request to `main`.
 
 ---
 
@@ -92,13 +117,48 @@ eda:
   top_n_features: 8
   outlier_method: "iqr"
   outlier_strategy: "iqr_bound"
+
+mlops:
+  mlflow_tracking_uri: "sqlite:///mlflow_store/mlruns.db"
+  mlflow_experiment: "ml-pipeline"
+
+agents:
+  anthropic_model: "claude-opus-5"
+  ollama_model: "qwen2.5"
 ```
+
+Tests point every path at an isolated `tmp_path` via a `PIPELINE_CONFIG` environment variable override — see [`model_registry.py`](projects/03_mlops/model_registry.py).
 
 ---
 
-## Inference API
+## MLOps
 
-Start the server (requires the pipeline to have been run first):
+### Experiment Tracking (MLflow)
+
+Every training run logs params, metrics, the feature-importance plot, and the serialized model to MLflow — not just a flat JSON file:
+
+```bash
+cd projects
+mlflow ui --backend-store-uri sqlite:///mlflow_store/mlruns.db
+```
+
+Then open `http://localhost:5000` to compare runs, inspect hyperparameters, and download logged model artifacts. (A lightweight JSON log at `03_mlops/metrics_log.json` is also kept — the agent/MCP tools read it directly without needing an MLflow client round-trip.)
+
+### Containerized Serving
+
+```bash
+cd projects
+docker compose up --build
+```
+
+This starts two services: `api` (trains the pipeline, then serves predictions on `:8000`) and `mlflow` (tracking UI on `:5000`) sharing the same MLflow store via named volumes. Or run just the API:
+
+```bash
+docker build -t ml-pipeline .
+docker run -p 8000:8000 ml-pipeline
+```
+
+### Inference API
 
 ```bash
 cd projects
@@ -112,7 +172,12 @@ curl http://localhost:8000/health
 # Predict
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{"features": {"Feature_3": 1.2, "Feature_7": -0.5, ...}}'
+  -d '{"features": {"Feature_3": 1.2, "Feature_7": -0.5}}'
+
+# Explain a prediction (SHAP contributions, tree-based models only)
+curl -X POST http://localhost:8000/explain \
+  -H "Content-Type: application/json" \
+  -d '{"features": {"Feature_3": 1.2, "Feature_7": -0.5}}'
 ```
 
 Interactive docs available at `http://localhost:8000/docs`.
@@ -121,8 +186,50 @@ Interactive docs available at `http://localhost:8000/docs`.
 
 ## AI Agents & MCP
 
+### Agent — Claude API or local Ollama
+
+The agent answers natural-language questions about the trained model by calling tools (`list_features`, `predict`, `explain_prediction`, `get_latest_metrics`, `get_run_history`) — the same tools exposed by the MCP server below. It supports two backends:
+
+```bash
+cd projects
+
+# Claude API (default) — needs ANTHROPIC_API_KEY
+export ANTHROPIC_API_KEY=sk-...
+python 05_agents/agent.py --question "Which model was selected and why?"
+
+# Local, free, no API key — needs Ollama running
+ollama pull qwen2.5
+python 05_agents/agent.py --provider ollama --question "Which model was selected and why?"
+```
+
+Sample output:
+
+```
+-------------------------------------------------------
+Q: What features does the model need? Make a prediction with all of them
+   set to 1.0, then explain which features drove that prediction.
+-------------------------------------------------------
+  [tool]   list_features()
+  [result] ["Feature_3", "Feature_7", ...]
+
+  [tool]   predict({"features": {"Feature_3": 1.0, "Feature_7": 1.0, ...}})
+  [result] {"prediction": 284.73}
+
+  [tool]   explain_prediction({"features": {"Feature_3": 1.0, ...}})
+  [result] {"prediction": 284.73, "base_value": 12.4, "contributions": {"Feature_7": 156.2, ...}}
+
+A: The model requires 8 features. With all set to 1.0, the predicted
+   target value is 284.73 — driven mostly by Feature_7 (+156.2) and
+   Feature_3 (+89.1) relative to the model's baseline of 12.4.
+```
+
+### Explainability (SHAP)
+
+`explain_prediction` returns per-feature SHAP contributions for a single prediction — not just global feature importance, but *why this specific prediction* came out the way it did. Supported for tree-based models (e.g. RandomForest); returns a clear error for linear models where it doesn't apply.
+
 ### MCP Server
-The MCP server exposes the pipeline as tools any MCP-compatible client can call.
+
+The MCP server exposes the same tools to any MCP-compatible client.
 
 ```bash
 # Test in browser — no API key needed
@@ -141,37 +248,7 @@ Connect to **Claude Desktop** by adding this to `claude_desktop_config.json`:
 }
 ```
 
-Tools exposed: `list_features` · `get_latest_metrics` · `get_run_history` · `predict`
-
-### Agent (Ollama — free, local)
-
-```bash
-# One-time setup
-curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull qwen2.5
-
-# Run demo questions
-cd projects
-python 05_agents/agent.py
-
-# Ask anything
-python 05_agents/agent.py --question "Which model was selected and why?"
-```
-
-Sample output:
-```
-───────────────────────────────────────────────────────
-Q: What features does the model need? Make a prediction with all set to 1.0.
-───────────────────────────────────────────────────────
-  [tool]   list_features()
-  [result] ["Feature_3", "Feature_7", ...]
-
-  [tool]   predict({"features": {"Feature_3": 1.0, "Feature_7": 1.0, ...}})
-  [result] {"prediction": 284.73}
-
-A: The model requires 8 features. With all set to 1.0, the predicted
-   target value is 284.73.
-```
+Tools exposed: `list_features` · `get_latest_metrics` · `get_run_history` · `predict` · `explain_prediction`
 
 ---
 
@@ -182,16 +259,15 @@ A: The model requires 8 features. With all set to 1.0, the predicted
 | **Data Engineering** | pandas, NumPy, reproducible data generation |
 | **EDA** | Correlation analysis, VIF (multicollinearity), IQR outlier treatment, Seaborn / Matplotlib |
 | **Machine Learning** | scikit-learn Pipelines, k-fold cross-validation, model comparison, feature importance |
-| **MLOps** | Model serialisation (joblib), metrics logging, FastAPI + Uvicorn serving |
-| **AI Agents** | Tool-calling agent loop, tool schema design, Ollama (local LLM) |
-| **MCP** | Custom MCP server, tool definitions, Claude Desktop / Inspector integration |
-| **Software Engineering** | Config-driven design, modular functions, structured logging, clean repo |
+| **MLOps** | MLflow experiment tracking, model serialization (joblib), FastAPI + Uvicorn serving, Docker / Compose |
+| **AI Agents & GenAI** | Claude API tool use (manual agentic loop), MCP server + client, Ollama local LLM, SHAP explainability |
+| **Software Engineering** | Config-driven design, pytest suite + GitHub Actions CI, DRY shared modules, structured logging, clean repo |
 
 ---
 
 ## Stack
 
-Python · scikit-learn · pandas · NumPy · FastAPI · Uvicorn · Pydantic · Matplotlib · Seaborn · statsmodels · PyYAML · MCP · Ollama
+Python · scikit-learn · pandas · NumPy · FastAPI · Uvicorn · Pydantic · MLflow · SHAP · Matplotlib · Seaborn · statsmodels · PyYAML · MCP · Anthropic Claude API · Ollama · pytest · Docker · GitHub Actions
 
 ---
 

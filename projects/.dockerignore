@@ -1,0 +1,12 @@
+data/
+mlruns/
+mlruns.db
+mlartifacts/
+02_ml_pipeline/*.pkl
+02_ml_pipeline/feature_importances.png
+01_eda/eda_visualizations/
+03_mlops/metrics_log.json
+tests/
+__pycache__/
+*.pyc
+.pytest_cache/
