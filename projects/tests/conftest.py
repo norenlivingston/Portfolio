@@ -15,8 +15,9 @@ def tiny_config(tmp_path):
     small so build -> EDA -> train runs in well under a second."""
     return {
         "data": {
-            "raw_path":       str(tmp_path / "raw.csv"),
-            "processed_path": str(tmp_path / "processed.csv"),
+            "raw_path":             str(tmp_path / "raw.csv"),
+            "processed_train_path": str(tmp_path / "processed_train.csv"),
+            "processed_test_path":  str(tmp_path / "processed_test.csv"),
             "n_samples":      200,
             "n_features":     10,
             "random_seed":    42,

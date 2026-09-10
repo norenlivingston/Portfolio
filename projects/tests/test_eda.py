@@ -57,9 +57,48 @@ def test_replace_outliers_rejects_unknown_method():
 
 def test_run_eda_end_to_end(tiny_config):
     build_dataset(tiny_config)
-    cleaned = run_eda(tiny_config)
+    train, test = run_eda(tiny_config)
 
     n = tiny_config["eda"]["top_n_features"]
-    assert cleaned.shape[1] == n + 1  # selected features + Target
-    assert Path(tiny_config["data"]["processed_path"]).exists()
+    assert train.shape[1] == n + 1  # selected features + Target
+    assert test.shape[1] == n + 1
+    assert Path(tiny_config["data"]["processed_train_path"]).exists()
+    assert Path(tiny_config["data"]["processed_test_path"]).exists()
     assert Path(tiny_config["eda"]["output_dir"], "correlation_heatmap.png").exists()
+
+
+def test_run_eda_test_set_does_not_influence_feature_selection_or_outlier_bounds(tiny_config):
+    """Regression test for train/test leakage: corrupting the rows that land in
+    the test split must not change which features get selected or how the
+    training split gets cleaned, since both are fit before the test set is
+    ever touched."""
+    import numpy as np
+    import pandas as pd
+
+    build_dataset(tiny_config)
+    train_a, _ = run_eda(tiny_config)
+
+    raw_path = Path(tiny_config["data"]["raw_path"])
+    df = pd.read_csv(raw_path)
+
+    # Recreate the same split eda.py will make, then corrupt only the rows
+    # that will land in the test partition with extreme, target-correlated
+    # values that would shift correlations and outlier bounds if leaked.
+    from sklearn.model_selection import train_test_split
+    _, test_idx = train_test_split(
+        df.index,
+        test_size=tiny_config["pipeline"]["test_size"],
+        random_state=tiny_config["pipeline"]["random_seed"],
+    )
+    rng = np.random.default_rng(0)
+    feature_cols = [c for c in df.columns if c != "Target"]
+    df.loc[test_idx, feature_cols] = rng.uniform(1e6, 2e6, size=(len(test_idx), len(feature_cols)))
+    df.loc[test_idx, "Target"] = rng.uniform(1e6, 2e6, size=len(test_idx))
+    df.to_csv(raw_path, index=False)
+
+    train_b, _ = run_eda(tiny_config)
+
+    assert list(train_a.columns) == list(train_b.columns)
+    pd.testing.assert_frame_equal(
+        train_a.reset_index(drop=True), train_b.reset_index(drop=True)
+    )
