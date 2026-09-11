@@ -21,7 +21,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import KFold, cross_val_score, train_test_split
+from sklearn.model_selection import KFold, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -93,19 +93,20 @@ def train_pipeline(config: dict) -> dict:
     mlflow.set_tracking_uri(cfg_mlfl.get("mlflow_tracking_uri", "sqlite:///mlflow_store/mlruns.db"))
     mlflow.set_experiment(cfg_mlfl.get("mlflow_experiment", "ml-pipeline"))
 
-    df = pd.read_csv(config["data"]["processed_path"])
-    log.info("Loaded processed dataset: %d rows × %d cols", *df.shape)
+    # The train/test split and all leakage-sensitive fitting (feature selection,
+    # outlier bounds) already happened in the EDA stage — these files are the
+    # untouched result, so the test rows below have never influenced training.
+    df_train = pd.read_csv(config["data"]["processed_train_path"])
+    df_test  = pd.read_csv(config["data"]["processed_test_path"])
+    log.info("Loaded processed dataset: train=%d rows, test=%d rows", len(df_train), len(df_test))
 
-    X = df.drop(columns=["Target"])
-    y = df["Target"]
+    X_train = df_train.drop(columns=["Target"])
+    y_train = df_train["Target"]
+    X_test  = df_test.drop(columns=["Target"])
+    y_test  = df_test["Target"]
 
-    numeric_features     = X.select_dtypes(include=["number"]).columns.tolist()
-    categorical_features = X.select_dtypes(include=["object"]).columns.tolist()
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=cfg["test_size"], random_state=cfg["random_seed"]
-    )
-    log.info("Split → train=%d, test=%d", len(X_train), len(X_test))
+    numeric_features     = X_train.select_dtypes(include=["number"]).columns.tolist()
+    categorical_features = X_train.select_dtypes(include=["object"]).columns.tolist()
 
     preprocessor = _build_preprocessor(numeric_features, categorical_features)
     cv = KFold(n_splits=cfg["cv_folds"], shuffle=True, random_state=cfg["random_seed"])

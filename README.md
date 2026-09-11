@@ -92,7 +92,7 @@ Which model wins CV can flip between `RandomForest` and `LinearRegression` depen
 | Stage | Script | Output |
 |---|---|---|
 | **Dataset Build** | `00_dataset_build/dataset_build.py` | `data/synthetic_regression_dataset.csv` |
-| **EDA** | `01_eda/eda.py` | `data/cleaned_synthetic_regression_dataset.csv`, plots |
+| **EDA** | `01_eda/eda.py` | `data/cleaned_synthetic_regression_dataset_train.csv`, `..._test.csv` (feature selection and outlier bounds are fit on the train split only), plots |
 | **Model Training** | `02_ml_pipeline/pipeline.py` | `best_model.pkl`, MLflow run, feature importance plot |
 | **Serving** | `03_mlops/serve.py` | REST API at `localhost:8000` |
 
