@@ -14,7 +14,7 @@ import logging
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from model_registry import explain_one, get_config, get_features, predict_one
 
@@ -34,13 +34,16 @@ app = FastAPI(
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class PredictRequest(BaseModel):
-    features: dict
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {"features": {"Feature_3": 1.2, "Feature_7": -0.5}}
-        }
-    }
+    features: dict = Field(
+        ...,
+        description=(
+            "One entry per feature the trained model requires. The feature-selection "
+            "step in the pipeline picks a different set of columns on every training "
+            "run, so the required names are not fixed - call GET /health first and "
+            "send every name it returns."
+        ),
+        examples=[{"<name from GET /health>": 1.0, "...": "..."}],
+    )
 
 
 class PredictResponse(BaseModel):
