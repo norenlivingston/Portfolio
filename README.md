@@ -74,7 +74,8 @@ Sample output:
 2026-04-09 12:00:00  INFO       STAGE 1 / 3 — Dataset Build
 2026-04-09 12:00:01  INFO     Saved raw dataset → data/synthetic_regression_dataset.csv
 2026-04-09 12:00:01  INFO       STAGE 2 / 3 — Exploratory Data Analysis
-2026-04-09 12:00:03  INFO     Top 8 features selected: ['Feature_5', ...]
+2026-04-09 12:00:02  INFO     Split → train=1600, test=400
+2026-04-09 12:00:03  INFO     Top 8 features selected (train only): ['Feature_5', ...]
 2026-04-09 12:00:04  INFO       STAGE 3 / 3 — Model Training & Evaluation
 2026-04-09 12:00:08  INFO       RandomForest          R² = 0.9991 ± 0.0002
 2026-04-09 12:00:08  INFO       LinearRegression      R² = 0.9988 ± 0.0003
@@ -183,32 +184,46 @@ python 03_mlops/serve.py     # Windows: .venv\Scripts\python.exe 03_mlops\serve.
 
 Leave that running in its own terminal — it's a server, not a one-off command. Then, in a **second** terminal:
 
-**macOS / Linux / curl**
+The pipeline's feature-selection step picks a different set of columns on every training run — there is no fixed feature list to hard-code into an example. `GET /health` always reports the exact names the current model needs, so every request below is built from that response rather than a fixed payload.
+
+**Easiest: run the bundled example client**, which does exactly that (`GET /health` → build a full-feature payload → `POST /predict` and `/explain`):
+```bash
+python 03_mlops/example_client.py    # Windows: .venv\Scripts\python.exe 03_mlops\example_client.py
+```
+
+**macOS / Linux / curl** — build the request body from `/health` with a one-line Python helper, no extra dependencies (e.g. `jq`) required:
 ```bash
 curl http://localhost:8000/health
 
+BODY=$(python -c "
+import json, urllib.request
+features = json.load(urllib.request.urlopen('http://localhost:8000/health'))['expected_features']
+print(json.dumps({'features': {f: 1.0 for f in features}}))
+")
+
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{"features": {"Feature_3": 1.2, "Feature_7": -0.5}}'
+  -d "$BODY"
 
 # Explain a prediction (SHAP contributions, tree-based models only)
 curl -X POST http://localhost:8000/explain \
   -H "Content-Type: application/json" \
-  -d '{"features": {"Feature_3": 1.2, "Feature_7": -0.5}}'
+  -d "$BODY"
 ```
 
 **Windows (PowerShell)** — `curl` is aliased to `Invoke-WebRequest` here with different flags, so use `Invoke-RestMethod` instead:
 ```powershell
-Invoke-RestMethod http://localhost:8000/health
+$health = Invoke-RestMethod http://localhost:8000/health
 
-$body = @{ features = @{ Feature_3 = 1.2; Feature_7 = -0.5 } } | ConvertTo-Json
+$features = @{}
+foreach ($f in $health.expected_features) { $features[$f] = 1.0 }
+$body = @{ features = $features } | ConvertTo-Json
+
 Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
 Invoke-RestMethod -Uri http://localhost:8000/explain -Method Post -Body $body -ContentType "application/json"
 ```
 
-Use whatever feature names your own `/health` response shows — `select_top_features` picks different columns each pipeline run.
-
-Easiest of all, on any OS: open `http://localhost:8000/docs` in a browser for the interactive Swagger UI — click "Try it out" on any endpoint, no shell syntax required.
+Easiest of all, on any OS: open `http://localhost:8000/docs` in a browser for the interactive Swagger UI — click "Try it out" on any endpoint, no shell syntax required. (The `/predict` schema shown there is illustrative only — it uses a placeholder feature name, since the real names come from `/health`.)
 
 ---
 

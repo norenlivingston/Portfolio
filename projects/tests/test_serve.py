@@ -32,10 +32,35 @@ def test_predict_success(trained_env):
     assert isinstance(body["prediction"], float)
 
 
+def test_predict_using_health_reported_features(trained_env):
+    """Mirrors the README's documented flow: read /health, build a full
+    feature payload from its response, then POST /predict — rather than a
+    hard-coded feature list, which would break whenever feature selection
+    picks a different set of columns."""
+    client = _client(trained_env)
+
+    expected_features = client.get("/health").json()["expected_features"]
+    features = {f: 1.0 for f in expected_features}
+    response = client.post("/predict", json={"features": features})
+
+    assert response.status_code == 200
+    assert isinstance(response.json()["prediction"], float)
+
+
 def test_predict_missing_feature_returns_400(trained_env):
     client = _client(trained_env)
     response = client.post("/predict", json={"features": {}})
     assert response.status_code == 400
+
+
+def test_predict_partial_features_returns_400(trained_env):
+    client = _client(trained_env)
+    expected_features = client.get("/health").json()["expected_features"]
+    features = {f: 1.0 for f in expected_features[:-1]}  # omit one required feature
+    response = client.post("/predict", json={"features": features})
+
+    assert response.status_code == 400
+    assert "Missing features" in response.json()["detail"]
 
 
 def test_explain_endpoint(trained_env):
