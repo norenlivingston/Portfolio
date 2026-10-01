@@ -1,198 +1,211 @@
-# Repository Maturity Remediation Plan
+# Repository Maturity Remediation Plan — v2
 
-This document is a handoff plan for bringing the repository to a stronger capstone-quality standard. It was created from the audit of `main` at commit `8ead150` on 2026-09-10.
+This plan reflects the repository state on `main` at commit `97bf4b9` (Maturity edit docs, #14), as reviewed on 2026-09-11.
 
-The repository is already a strong technical prototype: it has a config-driven pipeline, tests for the major stages, CI, Docker/Compose, MLflow, FastAPI serving, SHAP explainability, and an MCP/LLM layer. The work below focuses on scientific validity, reproducibility, public-repository hygiene, and a smoother reviewer experience.
+The repository now has a config-driven synthetic regression pipeline, tests for the major stages, GitHub Actions CI, Docker/Compose, MLflow, FastAPI serving, SHAP explainability, and an MCP/LLM layer. The leakage remediation described below is complete. The remaining work focuses on reproducible installation, valid user-facing examples, runtime hardening, public-repository hygiene, and a stronger capstone narrative.
+
+## Status legend
+
+- **Completed** — implemented in the current `main` checkout.
+- **Outstanding** — not yet implemented or not verifiable from the local repository.
+- **Partially complete** — some supporting work exists, but the recommendation is not fully satisfied.
 
 ## Success criteria
 
 When this plan is complete:
 
-- Test metrics are produced without using hold-out labels or test-distribution statistics during preprocessing or feature selection.
-- A new contributor can install a supported Python environment and run tests plus the full pipeline from a clean clone.
-- Every command shown in the README works as written, including prediction examples.
-- The public repository clearly explains the problem, data, limitations, model results, and how to contribute or report security issues.
-- CI validates quality and security gates on pull requests, and `main` is protected by those checks.
-- Generated models and experiment artifacts are reproducible without leaving large binaries in Git history.
+- Test metrics are produced without using hold-out labels or test-distribution statistics during preprocessing or feature selection. **Partially complete:** the default path is protected; the `remove` outlier strategy still needs an evaluation-policy decision.
+- A new contributor can install a supported Python environment and run tests plus the full pipeline from a clean clone. **Outstanding.**
+- Every command shown in the README works as written, including prediction examples. **Outstanding.**
+- The public repository clearly explains the problem, data, limitations, model results, and how to contribute or report security issues. **Outstanding.**
+- CI validates quality and security gates on pull requests, and `main` is protected by those checks. **Partially complete:** basic CI exists; quality gates and GitHub settings are not complete.
+- Generated models and experiment artifacts are reproducible without leaving large binaries in Git history. **Partially complete:** generated artifacts are ignored, but an old model remains in history.
 
-## Priority 1 — fix before presenting as a capstone
+## Completed work
 
-### 1. Remove train/test leakage
+### 1. Train/test leakage remediation — **Completed**
 
-Evidence:
+Implemented in `97bf4b9`:
 
-- `projects/01_eda/eda.py` selects features using target correlation across the entire dataset (`run_eda`, around lines 125-128).
-- The same stage calculates outlier bounds across the entire dataset (`run_eda`, around lines 134-140).
-- `projects/02_ml_pipeline/pipeline.py` performs the train/test split only after the processed dataset has already been created (`train_pipeline`, around lines 96-118).
+- `projects/01_eda/eda.py` splits the raw data before feature selection or outlier fitting.
+- Feature selection and VIF diagnostics are fit on the training split only.
+- `OutlierTreatment` learns bounds and replacement values from training data, then applies them to both splits.
+- The EDA stage writes separate cleaned train and test files.
+- `projects/02_ml_pipeline/pipeline.py` trains only from the cleaned training file and evaluates only against the cleaned test file.
+- `projects/tests/test_eda.py` includes a regression test that corrupts test rows and confirms the selected features and cleaned training data do not change.
+- The README now documents the separate train/test outputs and train-only fitting.
 
-Why it matters:
+Remaining edge case to resolve:
 
-The hold-out set influences feature selection and preprocessing. The reported test R², MAE, and RMSE can therefore be optimistic and do not represent an untouched evaluation set.
+- With `outlier_strategy: remove`, applying the transform to the test split can remove test rows and change the evaluation population. Choose and document one policy: disallow `remove` for final evaluation, replace test outliers using train-fitted bounds, or report the evaluation exclusion explicitly. Add a test for the chosen policy.
 
-Recommended implementation:
+## Outstanding recommendations
 
-1. Read the raw dataset and split it into training and final test sets immediately.
-2. Keep the final test set untouched until the final evaluation.
-3. Fit feature selection and outlier transformations only on the training partition.
-4. Apply the fitted transformations to validation and test data.
-5. Put all learned preprocessing in the sklearn `Pipeline` where practical. If a custom transformer is needed, implement `fit` and `transform` explicitly.
-6. Add a regression test proving that changing test-set values cannot change the selected features or fitted training transformation.
+### 2. Make README and API examples executable — **Outstanding**
 
-Do not use the final test set to choose the best model, tune thresholds, or select features.
+Evidence in the current repository:
 
-### 2. Make the README examples executable
-
-Evidence:
-
-- `README.md` shows `/predict` and `/explain` payloads with only `Feature_3` and `Feature_7`.
+- `README.md` and `projects/03_mlops/serve.py` still show payloads containing only `Feature_3` and `Feature_7`.
 - `projects/03_mlops/model_registry.py` rejects requests missing any feature returned by `get_features()`.
-- The default pipeline normally requires eight selected features, and the selected names can change.
+- The default configuration selects eight features, and selected names may change with the generated data and configuration.
 
 Recommended implementation:
 
-- Replace the hard-coded two-feature payload with a complete payload containing every feature from `/health`.
-- State clearly that the example is illustrative and that the feature list is generated by the pipeline.
-- Prefer a small script or documented shell command that reads `/health` and constructs a valid all-features request.
-- Update the FastAPI schema example in `projects/03_mlops/serve.py` to match the actual required request shape.
-- Add tests for a README-equivalent valid request and for a missing-feature request.
+1. Replace the hard-coded two-feature payload with a complete payload containing every feature from `/health`.
+2. State clearly that feature names are generated by the pipeline and are not stable API constants.
+3. Add a small script or documented shell command that reads `/health` and constructs a valid all-features request.
+4. Update the Pydantic schema example in `projects/03_mlops/serve.py` to match the actual required request shape.
+5. Add a README-equivalent integration test that sends a complete request and a malformed-request test that verifies the documented error response.
 
-### 3. Make the environment reproducible
+Value added: reviewers can run the documented demo successfully without reverse-engineering the model input contract.
+
+### 3. Make the environment reproducible — **Outstanding**
 
 Current condition:
 
 - `projects/requirements.txt` uses compatible-release ranges for core packages and unbounded minimum versions for several agent packages.
-- There is no lockfile, `pyproject.toml`, or explicit supported Python range.
-- CI tests only Python 3.11.
-- On the audit machine, Python 3.14 could not install the declared NumPy requirement; the dependency installation did not complete.
+- There is no lockfile, `pyproject.toml`, or formal supported Python range.
+- CI tests only Python 3.11, while the local virtual environment is Python 3.14.7 and lacks the required scientific packages.
+- Agent dependencies are installed with the core pipeline even when the user only wants to build, test, or serve the model.
 
 Recommended implementation:
 
 - Choose one dependency workflow: fully pinned requirements, `uv` with `uv.lock`, Poetry, or another lockfile-based approach.
-- Declare the supported Python range explicitly. Either support and test 3.14 or state a bounded range such as `>=3.11,<3.14`.
-- Split optional agent dependencies from the core pipeline if a user should be able to run the pipeline without Anthropic/Ollama/MCP.
-- Add a CI matrix for the supported Python versions.
-- Test installation from a fresh environment, not only from a developer machine with cached packages.
+- Declare the supported Python range explicitly. If Python 3.14 is not supported, state a bounded range such as `>=3.11,<3.14` and align the README badge and Docker image.
+- Split optional agent dependencies from core pipeline dependencies, for example with `requirements-agents.txt` or optional project extras.
+- Add a CI matrix for every supported Python version.
+- Verify installation and the quick start from a fresh environment with no cached packages.
 
-## Priority 2 — public GitHub maturity
+Value added: a reviewer or hiring manager can reproduce the project predictably, and users do not need unnecessary LLM packages to run the core pipeline.
 
-### 4. Add repository governance files
+### 4. Add repository governance files — **Outstanding**
 
-Add and tailor these files:
+Add and tailor:
 
-- `CONTRIBUTING.md` — setup, branching, tests, linting, pull-request expectations.
+- `CONTRIBUTING.md` — setup, branching, tests, linting, and pull-request expectations.
 - `SECURITY.md` — supported versions and private vulnerability-reporting instructions.
-- `CODE_OF_CONDUCT.md` — use a recognized standard and provide a contact path.
-- `CODEOWNERS` — define who reviews changes to code, workflows, and documentation.
-- `.github/pull_request_template.md` — problem, approach, tests, screenshots/results, risks.
+- `CODE_OF_CONDUCT.md` — a recognized standard and contact path.
+- `.github/CODEOWNERS` — reviewers for code, workflows, and documentation.
+- `.github/pull_request_template.md` — problem, approach, tests, results, and risks.
 - `.github/ISSUE_TEMPLATE/` — bug report and feature/request forms.
-- `CHANGELOG.md` or GitHub Releases — record user-visible changes.
+- `CHANGELOG.md` or GitHub Releases — user-visible changes.
 
-The public GitHub Security page currently reports no security policy. These files are especially valuable because this repository includes CI, model artifacts, API serving, and third-party AI integrations.
+Value added: these files establish how the public repository is maintained and give users a safe, predictable way to contribute or report problems.
 
-### 5. Configure GitHub protections and CI quality gates
+### 5. Strengthen CI and GitHub protections — **Partially complete**
 
-Verify or configure on GitHub:
+Existing capability:
+
+- `.github/workflows/ci.yml` runs on pushes and pull requests targeting `main`.
+- It installs the development requirements, runs pytest, and runs the full pipeline smoke test.
+
+Outstanding workflow improvements:
+
+- Add formatting/linting, such as Ruff.
+- Add optional type checking with mypy or pyright if annotations are expanded.
+- Add coverage reporting with a meaningful threshold.
+- Add dependency and security checks, including dependency review and CodeQL where supported.
+- Add `.github/dependabot.yml` for dependency updates.
+- Set `permissions: contents: read` explicitly.
+- Pin third-party Actions to full commit SHAs when practical.
+- Add a lightweight job or step that verifies the README quick-start path.
+- Keep Docker and heavier checks separate from the fast pull-request path when needed.
+
+Outstanding GitHub settings to verify manually:
 
 - `main` requires a passing CI check before merge.
 - Pull requests require review and conversation resolution.
 - Direct pushes to `main` are restricted.
 - Branch deletion after merge is enabled.
-- Dependabot version updates are configured with `.github/dependabot.yml`.
-- CodeQL or another code-scanning workflow is enabled where supported.
-- Dependency review runs on pull requests.
-- Workflow permissions default to read-only.
-- Third-party Actions are pinned to full commit SHAs when practical.
 
-Improve `.github/workflows/ci.yml` with:
+Value added: the repository becomes resistant to regressions, dependency drift, and accidental bypasses of the review process.
 
-- formatting/linting, such as Ruff;
-- optional type checking, such as mypy or pyright;
-- test coverage reporting with a meaningful threshold;
-- dependency/security checks;
-- uploaded test or model artifacts when they help diagnose failures;
-- explicit `permissions: contents: read`;
-- a job or step that verifies the README quick-start path.
+### 6. Improve the public landing page — **Outstanding**
 
-Keep the workflow fast enough for pull requests. Heavy model or Docker checks can be separate jobs or scheduled workflows if needed.
+The README has architecture, quick-start instructions, pipeline stages, testing instructions, and a stack summary. It still needs:
 
-### 6. Improve the public landing page
+- A concise problem statement near the top that explains the decision or user need.
+- A clearly labeled data section explaining that the current dataset is synthetic, how it is generated, and why it is used.
+- A results section separating cross-validation results from final hold-out results.
+- An explicit limitations section that avoids implying synthetic-data performance is production performance.
+- A deployed demo, portfolio link, architecture diagram, or screenshot/GIF if available.
 
-The public repository currently has no About description, website, or topics, and it has no tags/releases.
+GitHub metadata to add outside the repository files:
 
-Add:
+- One-sentence About description.
+- Topics such as `machine-learning`, `mlops`, `fastapi`, `mlflow`, `docker`, and `python`.
+- A `v0.1.0` release after the first stable cleanup.
 
-- a one-sentence About description;
-- topics such as `machine-learning`, `mlops`, `fastapi`, `mlflow`, `docker`, and `python`;
-- a link to the portfolio or deployed demo if available;
-- a `v0.1.0` release after the first stable cleanup;
-- a short demo GIF, architecture diagram, or screenshot;
-- a concise problem statement near the top of the README.
+Value added: the first screen answers what the project does, what data it uses, what it achieved, and how someone can evaluate it.
 
-The README should answer in the first screen: What problem is solved? What data is used? What is the result? How do I run it? What are the limitations?
+### 7. Remove generated binaries from Git history — **Outstanding; coordination required**
 
-## Priority 3 — artifact and runtime hardening
-
-### 7. Remove generated binaries from Git history
-
-The current tree ignores generated pickle files, but a historical 14.6 MB model exists at:
+The current tree correctly ignores generated model files, but Git history still contains:
 
 `projects/02_ml_pipeline/random_forest_regression_model.pkl`
 
 Recommended approach:
 
-1. Confirm there are no collaborators or automation depending on the old commit hashes.
+1. Confirm there are no collaborators, automation jobs, or external references that depend on old commit hashes.
 2. Back up the repository.
 3. Use `git filter-repo` or BFG to remove the historical binary.
 4. Force-push only after explicit coordination with anyone using the repository.
 5. Store reproducible models as release artifacts, Git LFS files, or generated CI artifacts instead of ordinary Git blobs.
 
-This is a history rewrite. Do not automate it as part of ordinary cleanup.
+Value added: reduces repository size and prevents obsolete binary artifacts from remaining permanently available in public history. This is not a normal cleanup step because it rewrites history.
 
-### 8. Make Docker Compose deterministic
+### 8. Make Docker Compose deterministic — **Outstanding**
 
 Current risk:
 
-- The `mlflow` service depends on the API container starting, but `depends_on` does not wait for pipeline training to complete.
-- The API retrains every time its container starts.
+- The API container trains the pipeline every time it starts.
+- The MLflow service depends on the API container but does not wait for training or a health check to complete.
 
 Recommended implementation:
 
-- Add a health check or explicit initialization step for the MLflow database.
 - Separate training from serving: use a training command/job to create the model, then start the API against that artifact.
-- Consider separate images or Compose profiles for `train`, `api`, and `mlflow`.
+- Consider Compose profiles or separate images/commands for `train`, `api`, and `mlflow`.
+- Add a health check or explicit initialization step for the MLflow database.
 - Document whether named volumes are intended to preserve data between runs.
-- Add a smoke test that starts Compose, waits for `/health`, calls `/predict`, and confirms that the MLflow UI can see the run.
+- Add a smoke test that starts Compose, waits for `/health`, calls `/predict`, and confirms MLflow can see the run.
 
-### 9. Validate inference inputs
+Value added: container startup becomes repeatable and operationally meaningful; serving no longer silently retrains the model or races the tracking UI.
 
-Current risk:
+### 9. Validate inference inputs — **Outstanding**
 
-- `PredictRequest.features` is an untyped `dict`.
-- Non-numeric values, NaN/infinity, and unknown fields are not explicitly rejected.
-- Bad values can cause an internal error instead of a clear client error.
+Current condition:
+
+- `PredictRequest.features` is an unrestricted `dict`.
+- Missing fields are checked, but unknown fields, nonnumeric values, NaN, and infinity are not explicitly validated.
+- Prediction failures can become internal errors rather than consistent client-facing validation responses.
 
 Recommended implementation:
 
 - Validate that every required feature is present.
 - Validate that every value is numeric and finite.
-- Reject unknown feature names unless intentionally supporting extras.
+- Reject unknown feature names unless extras are intentionally supported.
 - Return consistent 422 responses for malformed requests.
 - Add tests for missing, unknown, string, NaN, infinity, and valid inputs.
 - If deployed beyond localhost, add authentication, rate limiting, and request-size controls.
 
-### 10. Correct SHAP feature naming for transformed data
+Value added: creates a reliable API contract, improves client debugging, and reduces avoidable runtime failures or abuse paths.
 
-`projects/03_mlops/model_registry.py` currently zips raw input feature names with SHAP values after preprocessing. This works for the current all-numeric dataset, but it will mislabel or truncate explanations if categorical features are introduced and one-hot encoded.
+### 10. Correct transformed-feature explanations — **Outstanding**
+
+`projects/03_mlops/model_registry.py` currently zips raw input names with SHAP values after preprocessing. This is only safe while every selected feature remains numeric. Categorical features would be one-hot encoded and the explanation labels would be wrong or truncated.
 
 Recommended implementation:
 
 - Use `preprocessor.get_feature_names_out()` for transformed feature names.
-- Aggregate one-hot contributions back to their source feature when presenting explanations.
-- Add a categorical-feature test covering prediction and explanation.
+- Aggregate one-hot contributions back to their source feature for user-facing explanations.
+- Add a categorical-feature test covering both prediction and explanation.
+- Update the feature-importance plot in `projects/02_ml_pipeline/pipeline.py` at the same time: it currently supplies only raw numeric feature names even though the model supports categorical preprocessing.
 
-## Modeling and narrative improvements
+Value added: explanations remain correct as the dataset evolves beyond the current all-numeric demonstration.
 
-These are not blockers for the engineering cleanup, but they will make the project more credible as a capstone:
+## Modeling and narrative improvements — **Outstanding**
+
+These are not blockers for the core engineering cleanup, but they materially improve capstone credibility:
 
 - Explain the real-world decision or business question, not only the technology stack.
 - Use a real, cited dataset if possible, or explicitly frame the current project as a synthetic demonstration.
@@ -201,22 +214,25 @@ These are not blockers for the engineering cleanup, but they will make the proje
 - Add a model card describing intended use, non-use, data generation, assumptions, and known failure modes.
 - Explain why VIF is calculated and what decision it changes; currently it is logged but does not drive feature selection.
 - Record the data/config/model version associated with every MLflow run.
-- Avoid implying that very high synthetic-data R² represents real-world performance.
+- Avoid presenting the very high synthetic-data R² as evidence of real-world performance.
 
-## Suggested implementation sequence for Claude
+Value added: this turns a strong engineering prototype into an understandable, honest data-science case study.
 
-1. Fix leakage and add regression tests.
-2. Repair README/API examples and add malformed-input tests.
+## Suggested implementation sequence
+
+1. Decide and test the `remove` outlier policy for final evaluation.
+2. Repair README/API examples and add comprehensive malformed-input tests.
 3. Introduce dependency locking and supported-Python metadata.
-4. Harden CI and add lint/coverage/security gates.
-5. Add governance files and GitHub settings checklist.
-6. Refactor Compose startup and artifact handling.
-7. Fix categorical SHAP naming.
-8. Improve the project narrative, model card, release, and public metadata.
+4. Harden CI with lint, coverage, dependency, and security gates.
+5. Separate Compose training, serving, and MLflow startup.
+6. Add governance files and configure GitHub protections.
+7. Add the model card, limitations, baseline, and clearer problem statement.
+8. Fix categorical SHAP and feature-importance naming.
+9. Remove the historical binary only after coordination.
 
 ## Validation checklist
 
-Run from a clean clone after implementation:
+Run from a clean clone in every supported Python version:
 
 ```text
 python --version
@@ -230,8 +246,9 @@ Then verify manually:
 
 - `/health` returns the current required features.
 - A complete `/predict` request succeeds.
-- An incomplete or malformed request returns a clear 422/400 response.
+- Missing, unknown, nonnumeric, NaN, and infinite inputs return clear 422 responses.
 - `/explain` labels every contribution correctly.
 - MLflow shows the current run and artifacts.
-- A pull request cannot merge when CI fails.
 - The README quick start works from a fresh environment.
+- A pull request cannot merge when required quality or security checks fail.
+- The final evaluation policy for removed outliers is documented and tested.
