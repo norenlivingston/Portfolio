@@ -24,7 +24,7 @@ certifi==2026.10.23
     #   -c requirements.txt
     #   httpcore
     #   httpx
-click==8.5.0 ; sys_platform != 'emscripten'
+click==8.5.0
     # via
     #   -c requirements.txt
     #   uvicorn
@@ -61,14 +61,14 @@ mcp==1.12.4
     # via -r requirements-agents.in
 ollama==0.6.3
     # via -r requirements-agents.in
-pydantic==2.10.6
+pydantic==2.14.1
     # via
     #   -c requirements.txt
     #   anthropic
     #   mcp
     #   ollama
     #   pydantic-settings
-pydantic-core==2.27.2
+pydantic-core==2.50.1
     # via
     #   -c requirements.txt
     #   pydantic
@@ -80,10 +80,6 @@ python-dotenv==1.2.4
     #   pydantic-settings
 python-multipart==0.0.32
     # via mcp
-pywin32==312 ; sys_platform == 'win32'
-    # via
-    #   -c requirements.txt
-    #   mcp
 referencing==0.37.0
     # via
     #   jsonschema
@@ -114,8 +110,9 @@ typing-extensions==4.16.0
 typing-inspection==0.4.4
     # via
     #   -c requirements.txt
+    #   pydantic
     #   pydantic-settings
-uvicorn==0.32.1 ; sys_platform != 'emscripten'
+uvicorn==0.54.0
     # via
     #   -c requirements.txt
     #   mcp
