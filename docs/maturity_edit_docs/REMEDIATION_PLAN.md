@@ -1,8 +1,8 @@
-# Repository Maturity Remediation Plan — v2
+# Repository Maturity Remediation Plan — v3
 
-This plan reflects the repository state on `main` at commit `97bf4b9` (Maturity edit docs, #14), as reviewed on 2026-09-11.
+This plan reflects the repository state after the engineering cleanup of 2026-10-23 (branch `ccr-d7a9dc90-p47pqm`, on top of `main` at `1bc7d1f`). v2 described `main` at `97bf4b9`.
 
-The repository now has a config-driven synthetic regression pipeline, tests for the major stages, GitHub Actions CI, Docker/Compose, MLflow, FastAPI serving, SHAP explainability, and an MCP/LLM layer. The leakage remediation described below is complete. The remaining work focuses on reproducible installation, valid user-facing examples, runtime hardening, public-repository hygiene, and a stronger capstone narrative.
+The repository now has a config-driven synthetic regression pipeline, tests for the major stages, GitHub Actions CI, Docker/Compose, MLflow, FastAPI serving, SHAP explainability, and an MCP/LLM layer. Items 1–5 and 8–10 are now complete in the repository. What remains: GitHub settings that must be changed in the web UI (part of item 5), the narrative parts of the landing page (item 6), the history rewrite (item 7, needs coordination), and the modelling and narrative improvements.
 
 ## Status legend
 
@@ -14,11 +14,11 @@ The repository now has a config-driven synthetic regression pipeline, tests for 
 
 When this plan is complete:
 
-- Test metrics are produced without using hold-out labels or test-distribution statistics during preprocessing or feature selection. **Partially complete:** the default path is protected; the `remove` outlier strategy still needs an evaluation-policy decision.
-- A new contributor can install a supported Python environment and run tests plus the full pipeline from a clean clone. **Outstanding.**
-- Every command shown in the README works as written, including prediction examples. **Outstanding.**
-- The public repository clearly explains the problem, data, limitations, model results, and how to contribute or report security issues. **Outstanding.**
-- CI validates quality and security gates on pull requests, and `main` is protected by those checks. **Partially complete:** basic CI exists; quality gates and GitHub settings are not complete.
+- Test metrics are produced without using hold-out labels or test-distribution statistics during preprocessing or feature selection. **Completed.**
+- A new contributor can install a supported Python environment and run tests plus the full pipeline from a clean clone. **Completed:** verified from fresh environments on Python 3.11 and 3.13; CI covers 3.11–3.13.
+- Every command shown in the README works as written, including prediction examples. **Completed:** the CI `quickstart` job replays the README flow on every PR.
+- The public repository clearly explains the problem, data, limitations, model results, and how to contribute or report security issues. **Partially complete:** contributing/security files exist; problem, data, results, and limitations sections are still to be written (item 6).
+- CI validates quality and security gates on pull requests, and `main` is protected by those checks. **Partially complete:** lint, coverage, Docker, CodeQL, and dependency-review gates exist; branch protection still has to be configured in GitHub settings.
 - Generated models and experiment artifacts are reproducible without leaving large binaries in Git history. **Partially complete:** generated artifacts are ignored, but an old model remains in history.
 
 ## Completed work
@@ -35,13 +35,13 @@ Implemented in `97bf4b9`:
 - `projects/tests/test_eda.py` includes a regression test that corrupts test rows and confirms the selected features and cleaned training data do not change.
 - The README now documents the separate train/test outputs and train-only fitting.
 
-Remaining edge case to resolve:
+`remove`-strategy edge case: resolved. `OutlierTreatment.transform(..., allow_row_drop=False)` is used for the test split, so under `remove` test outliers are clipped to train-fitted bounds and no test rows are dropped. Covered by `test_remove_strategy_never_drops_test_rows` and `test_outlier_transform_without_row_drop_clips_to_train_bounds`.
 
-- With `outlier_strategy: remove`, applying the transform to the test split can remove test rows and change the evaluation population. Choose and document one policy: disallow `remove` for final evaluation, replace test outliers using train-fitted bounds, or report the evaluation exclusion explicitly. Add a test for the chosen policy.
+### 2. Make README and API examples executable — **Completed**
 
-## Outstanding recommendations
+Done in #16 and this cleanup: README and Swagger examples are built from `GET /health`; `03_mlops/example_client.py` builds a full payload and exits non-zero if `/predict` fails; malformed-request tests cover the documented `422` responses; the CI `quickstart` job replays the README flow.
 
-### 2. Make README and API examples executable — **Outstanding**
+Original findings, kept for reference:
 
 Evidence in the current repository:
 
@@ -59,7 +59,11 @@ Recommended implementation:
 
 Value added: reviewers can run the documented demo successfully without reverse-engineering the model input contract.
 
-### 3. Make the environment reproducible — **Outstanding**
+### 3. Make the environment reproducible — **Completed**
+
+Done: `requirements*.in` → universal pinned lockfiles via `uv pip compile`; `pyproject.toml` declares `>=3.11,<3.14`; agent packages split into `requirements-agents.txt`; CI matrix on 3.11/3.12/3.13; fresh installs verified on 3.11 and 3.13.
+
+Original findings, kept for reference:
 
 Current condition:
 
@@ -78,7 +82,11 @@ Recommended implementation:
 
 Value added: a reviewer or hiring manager can reproduce the project predictably, and users do not need unnecessary LLM packages to run the core pipeline.
 
-### 4. Add repository governance files — **Outstanding**
+### 4. Add repository governance files — **Completed**
+
+Done: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`, PR template, issue forms, `CHANGELOG.md`. Still to do in GitHub: enable private vulnerability reporting (Settings → Code security), which `SECURITY.md` links to.
+
+Original list:
 
 Add and tailor:
 
@@ -92,7 +100,11 @@ Add and tailor:
 
 Value added: these files establish how the public repository is maintained and give users a safe, predictable way to contribute or report problems.
 
-### 5. Strengthen CI and GitHub protections — **Partially complete**
+### 5. Strengthen CI and GitHub protections — **Partially complete (repository side done)**
+
+Done in the repository: ruff, coverage floor (85%), Python matrix, `permissions: contents: read`, SHA-pinned actions, README quick-start job, agents import job, separate Docker workflow, CodeQL, dependency review, Dependabot. Type checking (mypy/pyright) was deliberately left out until type annotations are expanded.
+
+Still outstanding: the GitHub settings below. Required checks to select: `lint`, `test (3.11)`, `test (3.12)`, `test (3.13)`, `quickstart`, `agents`, `compose-smoke`, `dependency-review`, `analyze`.
 
 Existing capability:
 
@@ -120,7 +132,9 @@ Outstanding GitHub settings to verify manually:
 
 Value added: the repository becomes resistant to regressions, dependency drift, and accidental bypasses of the review process.
 
-### 6. Improve the public landing page — **Outstanding**
+### 6. Improve the public landing page — **Outstanding (deferred to the data-science phase)**
+
+GitHub About description and topics are already set. Problem statement, data, results, and limitations sections will be written together with the modelling improvements below, so they describe the final analysis.
 
 The README has architecture, quick-start instructions, pipeline stages, testing instructions, and a stack summary. It still needs:
 
@@ -154,7 +168,11 @@ Recommended approach:
 
 Value added: reduces repository size and prevents obsolete binary artifacts from remaining permanently available in public history. This is not a normal cleanup step because it rewrites history.
 
-### 8. Make Docker Compose deterministic — **Outstanding**
+### 8. Make Docker Compose deterministic — **Completed**
+
+Done: one-shot `train` service; `api`/`mlflow` wait on `service_completed_successfully` and have health checks; the image only serves; `config.docker.yaml` (drift-tested against `config.yaml`) keeps artifacts in a shared volume; volume persistence is documented; `docker.yml` runs the Compose smoke test. Verified locally with `docker compose up --wait`.
+
+Original findings, kept for reference:
 
 Current risk:
 
@@ -171,7 +189,11 @@ Recommended implementation:
 
 Value added: container startup becomes repeatable and operationally meaningful; serving no longer silently retrains the model or races the tracking UI.
 
-### 9. Validate inference inputs — **Outstanding**
+### 9. Validate inference inputs — **Completed**
+
+Done: `model_registry.validate_features` checks for missing, unknown, non-numeric (including booleans and null), NaN/infinite values, and categorical type. The API returns `422` with every problem listed; the agent/MCP tools return the same messages. Tests cover each case on both `/predict` and `/explain`. Authentication and rate limiting remain out of scope for a localhost demo; `SECURITY.md` says so.
+
+Original findings, kept for reference:
 
 Current condition:
 
@@ -190,7 +212,11 @@ Recommended implementation:
 
 Value added: creates a reliable API contract, improves client debugging, and reduces avoidable runtime failures or abuse paths.
 
-### 10. Correct transformed-feature explanations — **Outstanding**
+### 10. Correct transformed-feature explanations — **Completed**
+
+Done: `pipeline.source_feature_names` maps each preprocessed column to its raw feature; SHAP contributions and the feature-importance plot are summed per raw feature. `tests/test_categorical.py` covers predict, explain (including SHAP additivity), validation, and the plot labels with a one-hot encoded feature.
+
+Original findings, kept for reference:
 
 `projects/03_mlops/model_registry.py` currently zips raw input names with SHAP values after preprocessing. This is only safe while every selected feature remains numeric. Categorical features would be one-hot encoded and the explanation labels would be wrong or truncated.
 
@@ -219,6 +245,9 @@ These are not blockers for the core engineering cleanup, but they materially imp
 Value added: this turns a strong engineering prototype into an understandable, honest data-science case study.
 
 ## Suggested implementation sequence
+
+Steps 1–5 and 8 are complete; step 6 is done in the repository, with the GitHub settings still to configure. Remaining: 6 (settings), 7 (modelling and narrative), 9 (history rewrite).
+
 
 1. Decide and test the `remove` outlier policy for final evaluation.
 2. Repair README/API examples and add comprehensive malformed-input tests.
