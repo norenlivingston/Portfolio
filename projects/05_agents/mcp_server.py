@@ -21,10 +21,9 @@ Connect to Claude Desktop — add this to your claude_desktop_config.json:
 """
 from mcp.server.fastmcp import FastMCP
 
-from tools import explain_one, get_features
+from tools import explain_one, get_features, predict_one
 from tools import get_latest_metrics as _get_latest_metrics
 from tools import get_run_history as _get_run_history
-from tools import predict_one
 
 mcp = FastMCP("ml-pipeline")
 

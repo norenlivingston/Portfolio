@@ -17,8 +17,8 @@ for _p in ("00_dataset_build", "01_eda", "02_ml_pipeline"):
     sys.path.insert(0, _p)
 
 from dataset_build import build_dataset  # noqa: E402
-from eda import run_eda                  # noqa: E402
-from pipeline import train_pipeline      # noqa: E402
+from eda import run_eda  # noqa: E402
+from pipeline import train_pipeline  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,

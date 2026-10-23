@@ -5,11 +5,12 @@ evaluates on a hold-out test set, and persists the pipeline + a metrics log.
 """
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import joblib
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import mlflow
@@ -56,7 +57,7 @@ def source_feature_names(preprocessor: ColumnTransformer) -> list:
             continue
         encoder = transformer.named_steps.get("encoder") if isinstance(transformer, Pipeline) else None
         if encoder is not None and hasattr(encoder, "categories_"):
-            for col, categories in zip(cols, encoder.categories_):
+            for col, categories in zip(cols, encoder.categories_, strict=True):
                 sources.extend([col] * len(categories))
         else:
             sources.extend(cols)
@@ -66,7 +67,7 @@ def source_feature_names(preprocessor: ColumnTransformer) -> list:
 def aggregate_by_source(values, sources: list) -> dict:
     """Sum per-output-column values into one value per raw input feature."""
     totals = {}
-    for source, value in zip(sources, values):
+    for source, value in zip(sources, values, strict=True):
         totals[source] = totals.get(source, 0.0) + float(value)
     return totals
 
@@ -198,11 +199,14 @@ def train_pipeline(config: dict) -> dict:
             artifact_path="model",
             serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_CLOUDPICKLE,
         )
-        log.info("MLflow run logged → %s (experiment: %s)", run.info.run_id, cfg_mlfl.get("mlflow_experiment", "ml-pipeline"))
+        log.info(
+            "MLflow run logged → %s (experiment: %s)",
+            run.info.run_id, cfg_mlfl.get("mlflow_experiment", "ml-pipeline"),
+        )
 
         # ── Append run to metrics log (used by the agent/MCP tools) ─────────────
         metrics = {
-            "timestamp":     datetime.now(timezone.utc).isoformat(),
+            "timestamp":     datetime.now(UTC).isoformat(),
             "best_model":    best_name,
             "cv_r2_mean":    float(best_scores.mean()),
             "cv_r2_std":     float(best_scores.std()),

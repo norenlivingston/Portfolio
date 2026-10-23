@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -143,7 +144,7 @@ def save_plots(df: pd.DataFrame, output_dir: str) -> None:
     # Top-4 feature–target scatter
     top4 = df.corr()["Target"].drop("Target").abs().nlargest(4).index.tolist()
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    for ax, feat in zip(axes.flat, top4):
+    for ax, feat in zip(axes.flat, top4, strict=False):  # fewer than 4 features leaves axes blank
         ax.scatter(df[feat], df["Target"], alpha=0.3, s=10)
         ax.set_xlabel(feat)
         ax.set_ylabel("Target")

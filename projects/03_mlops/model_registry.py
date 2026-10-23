@@ -129,6 +129,7 @@ def explain_one(features: dict) -> dict:
         return {"error": f"Explainability is not supported for {type(regressor).__name__}."}
 
     import shap  # heavy import — deferred until actually needed
+
     from pipeline import aggregate_by_source, source_feature_names
 
     preprocessor = model.named_steps["preprocessor"]
