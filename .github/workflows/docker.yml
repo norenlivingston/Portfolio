@@ -1,0 +1,47 @@
+name: Docker
+
+# Heavier than the main CI path, so it only runs when container inputs change.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "projects/**"
+      - ".github/workflows/docker.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: projects
+
+jobs:
+  compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate compose file
+        run: docker compose config --quiet
+      - name: Build, train, and wait for healthy services
+        run: docker compose up --build --detach --wait
+      - name: Predict through the API
+        run: docker compose exec -T api python 03_mlops/example_client.py
+      - name: MLflow sees the training run
+        run: |
+          docker compose exec -T mlflow python -c "
+          import mlflow
+          mlflow.set_tracking_uri('sqlite:////app/mlflow_store/mlruns.db')
+          assert len(mlflow.search_runs(experiment_names=['ml-pipeline'])) > 0, 'no MLflow runs'
+          "
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

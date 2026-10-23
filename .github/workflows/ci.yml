@@ -6,27 +6,81 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: projects
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Install ruff (version pinned in requirements-dev.txt)
+        run: pip install "$(grep '^ruff==' requirements-dev.txt)"
+      - name: Lint
+        run: ruff check --output-format=github .
+
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: projects
-
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: projects/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run tests with coverage
+        run: pytest -v --cov --cov-report=term
 
-      - uses: actions/setup-python@v5
+  # Follows the README quick start exactly: core requirements only, full
+  # pipeline, then the documented server + example-client flow.
+  quickstart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: projects/requirements-dev.txt
-
-      - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-
-      - name: Run tests
-        run: pytest -v
-
-      - name: Smoke-test the full pipeline
+          cache-dependency-path: projects/requirements.txt
+      - name: Install core dependencies
+        run: pip install -r requirements.txt
+      - name: Run the full pipeline
         run: python run_pipeline.py
+      - name: Serve and call the API
+        run: |
+          python 03_mlops/serve.py > serve.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:8000/health > /dev/null && break; sleep 1; done
+          python 03_mlops/example_client.py || { cat serve.log; exit 1; }
+
+  # Optional agent/MCP dependencies resolve and the entry points import.
+  agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: projects/requirements-agents.txt
+      - name: Install core + agent dependencies
+        run: pip install -r requirements.txt -r requirements-agents.txt
+      - name: Import agent and MCP server
+        working-directory: projects/05_agents
+        run: python -c "import agent, mcp_server"
