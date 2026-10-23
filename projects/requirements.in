@@ -9,7 +9,10 @@ statsmodels~=0.14.4
 joblib~=1.4.2
 scikit-learn~=1.6.1
 pyyaml~=6.0
-fastapi~=0.115.0
+fastapi~=0.162
+# Transitive via fastapi, floored explicitly: starlette 0.46.x has high-severity
+# advisories (GHSA-7f5h-v6xp-fcq8, GHSA-wqp7-x3pw-xc5r, GHSA-82w8-qh3p-5jfq).
+starlette>=1.9
 uvicorn~=0.32.0
 pydantic~=2.10.0
 

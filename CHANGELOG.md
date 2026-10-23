@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format follows
 - CI: ruff lint, a 3.11–3.13 test matrix with an 85% coverage floor, a README quick-start replay, an agent dependency check, a Docker Compose smoke test, dependency review, CodeQL, and Dependabot.
 - Governance files: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CODEOWNERS`, and PR/issue templates.
 
+### Security
+- Upgraded `fastapi` 0.115 → 0.162 and `starlette` 0.46.2 → 1.9.0. `starlette` 0.46.x has three high-severity advisories (GHSA-7f5h-v6xp-fcq8, GHSA-wqp7-x3pw-xc5r, GHSA-82w8-qh3p-5jfq), and the old `fastapi` cap kept it below 0.47. `requirements.in` now sets an explicit `starlette` floor.
+
 ### Changed
 - **Breaking:** invalid inference requests now return `422` instead of `400`. `400` is now only used for valid requests the model can't serve (e.g. `/explain` on a linear model).
 - Agent/MCP packages moved to the optional `requirements-agents.txt`; `shap` moved to the core requirements, since `/explain` needs it.
