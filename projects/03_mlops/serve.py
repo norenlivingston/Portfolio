@@ -16,7 +16,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from model_registry import explain_one, get_config, get_features, predict_one
+from model_registry import explain_one, get_config, get_features, predict_one, validate_features
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(message)s")
 log = logging.getLogger(__name__)
@@ -40,7 +40,9 @@ class PredictRequest(BaseModel):
             "One entry per feature the trained model requires. The feature-selection "
             "step in the pipeline picks a different set of columns on every training "
             "run, so the required names are not fixed - call GET /health first and "
-            "send every name it returns."
+            "send every name it returns, with a finite number for each (or a string "
+            "for categorical features). Missing, unknown, non-numeric, NaN, or "
+            "infinite values are rejected with 422."
         ),
         examples=[{"<name from GET /health>": 1.0, "...": "..."}],
     )
@@ -64,8 +66,15 @@ def health():
     return {"status": "ok", "expected_features": get_features()}
 
 
+def _validate(req: PredictRequest) -> None:
+    errors = validate_features(req.features)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
+    _validate(req)
     result = predict_one(req.features)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -76,6 +85,7 @@ def predict(req: PredictRequest):
 
 @app.post("/explain", response_model=ExplainResponse)
 def explain(req: PredictRequest):
+    _validate(req)
     result = explain_one(req.features)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])

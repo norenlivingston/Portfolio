@@ -1,0 +1,9 @@
+# Optional: 05_agents (tool-calling agent + MCP server). Not needed to build,
+# test, or serve the model. Install on top of requirements.txt:
+#   pip install -r requirements.txt -r requirements-agents.txt
+-c requirements.txt
+
+mcp~=1.0
+anthropic~=0.40
+# For --provider ollama, also install the Ollama app itself: https://ollama.com
+ollama~=0.3

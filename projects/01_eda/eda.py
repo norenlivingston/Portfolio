@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -44,7 +45,13 @@ class OutlierTreatment:
     """Learns per-column outlier bounds (and replacement values) from a single
     fit set, then applies them unchanged to any dataframe. Fitting on the
     training split only and reusing those bounds for the test split keeps the
-    test set from influencing its own cleaning."""
+    test set from influencing its own cleaning.
+
+    `allow_row_drop=False` (used for the hold-out split) keeps every row: under
+    the `remove` strategy, out-of-bound values are clipped to the train-fitted
+    bounds instead of dropping the row, so the evaluation population is never
+    changed by cleaning. Dropping test rows would silently exclude the hardest
+    cases from the reported metrics."""
 
     def __init__(self, method: str, threshold: float, strategy: str):
         self.method    = method
@@ -74,7 +81,7 @@ class OutlierTreatment:
 
         return self
 
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, df: pd.DataFrame, allow_row_drop: bool = True) -> pd.DataFrame:
         df_out = df.copy()
 
         for col, (lo, hi) in self.bounds_.items():
@@ -90,7 +97,7 @@ class OutlierTreatment:
                 df_out.loc[mask, col] = self.medians_[col]
             elif self.strategy == "mean":
                 df_out.loc[mask, col] = self.means_[col]
-            elif self.strategy == "iqr_bound":
+            elif self.strategy == "iqr_bound" or (self.strategy == "remove" and not allow_row_drop):
                 df_out.loc[df_out[col] < lo, col] = lo
                 df_out.loc[df_out[col] > hi, col] = hi
             elif self.strategy == "remove":
@@ -137,7 +144,7 @@ def save_plots(df: pd.DataFrame, output_dir: str) -> None:
     # Top-4 feature–target scatter
     top4 = df.corr()["Target"].drop("Target").abs().nlargest(4).index.tolist()
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    for ax, feat in zip(axes.flat, top4):
+    for ax, feat in zip(axes.flat, top4, strict=False):  # fewer than 4 features leaves axes blank
         ax.scatter(df[feat], df["Target"], alpha=0.3, s=10)
         ax.set_xlabel(feat)
         ax.set_ylabel("Target")
@@ -178,14 +185,16 @@ def run_eda(config: dict) -> tuple:
     vif = compute_vif(df_train.drop(columns=["Target"]))
     log.info("VIF results (train):\n%s", vif.to_string(index=False))
 
-    # Outlier treatment — bounds fit on training data, then applied to both splits
+    # Outlier treatment — bounds fit on training data, then applied to both splits.
+    # The test split never loses rows (see OutlierTreatment), so the hold-out
+    # metrics always cover the full evaluation population.
     outliers = OutlierTreatment(
         method=cfg_eda["outlier_method"],
         threshold=cfg_eda["outlier_threshold"],
         strategy=cfg_eda["outlier_strategy"],
     ).fit(df_train)
     df_train_clean = outliers.transform(df_train)
-    df_test_clean  = outliers.transform(df_test)
+    df_test_clean  = outliers.transform(df_test, allow_row_drop=False)
     log.info("After outlier treatment → train=%d rows, test=%d rows", len(df_train_clean), len(df_test_clean))
 
     # Visualisations — training data only, so plots never reveal test-set shape

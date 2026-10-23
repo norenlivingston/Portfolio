@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/norenlivingston/Portfolio/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+![Python](https://img.shields.io/badge/python-3.11%E2%80%933.13-blue.svg)
 
 A clean, reproducible, **tested** machine learning pipeline covering the full data science workflow — from raw data generation through EDA, model training, experiment tracking, containerized serving, and an LLM agent layer on top.
 
@@ -15,7 +15,10 @@ Built as a portfolio project to demonstrate practical ML engineering skills.
 ```
 projects/
 ├── config.yaml              ← single source of truth for all parameters
+├── config.docker.yaml       ← same settings, artifact paths moved to a Docker volume
 ├── run_pipeline.py          ← runs the full pipeline with one command
+├── pyproject.toml           ← supported Python range + ruff/pytest/coverage config
+├── requirements*.in / .txt  ← loose ranges / generated pinned lockfiles
 ├── Dockerfile / docker-compose.yml
 ├── tests/                   ← pytest suite covering every stage
 │
@@ -86,6 +89,8 @@ Sample output:
 
 Which model wins CV can flip between `RandomForest` and `LinearRegression` depending on installed library versions — this synthetic data is close to linear, so both score within a hair of each other. Seeing `LinearRegression` selected on your machine isn't a bug.
 
+Supported Python versions are **3.11–3.13**. `requirements.txt` is a fully pinned lockfile, so every install gets the same package versions. It covers only the core pipeline and API; the optional agent layer has its own file (see [AI Agents & MCP](#ai-agents--mcp)).
+
 ---
 
 ## Pipeline Stages
@@ -111,7 +116,15 @@ pip install -r requirements-dev.txt      # Windows: .venv\Scripts\python.exe -m 
 pytest -v                                # Windows: .venv\Scripts\python.exe -m pytest -v
 ```
 
-[GitHub Actions](.github/workflows/ci.yml) runs the test suite and a full pipeline smoke test on every push and pull request to `main`.
+Lint with `ruff check .`. CI also enforces an 85% coverage floor (`pytest --cov`).
+
+On every push and pull request to `main`, GitHub Actions runs:
+
+- [**CI**](.github/workflows/ci.yml): ruff, the test suite on Python 3.11/3.12/3.13 with coverage, a replay of the README quick start (install → pipeline → API → example client), and an install/import check of the optional agent dependencies.
+- [**Docker**](.github/workflows/docker.yml): builds the Compose stack, waits for health checks, calls `/predict`, and confirms MLflow recorded the run.
+- [**CodeQL**](.github/workflows/codeql.yml) and [**dependency review**](.github/workflows/dependency-review.yml): security gates. [Dependabot](.github/dependabot.yml) proposes dependency updates weekly.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to regenerate the lockfiles after changing dependencies.
 
 ---
 
@@ -168,12 +181,20 @@ cd projects
 docker compose up --build
 ```
 
-This starts two services: `api` (trains the pipeline, then serves predictions on `:8000`) and `mlflow` (tracking UI on `:5000`) sharing the same MLflow store via named volumes. Or run just the API:
+Startup is explicit and ordered:
+
+1. `train` runs the full pipeline once and exits.
+2. Only after it succeeds, `api` (predictions on `:8000`) and `mlflow` (tracking UI on `:5000`) start. Both have health checks, so `docker compose up --wait` returns once they're actually ready.
+
+The trained model, data, and MLflow runs live in named volumes and **persist between runs** on purpose:
 
 ```bash
-docker build -t ml-pipeline .
-docker run -p 8000:8000 ml-pipeline
+docker compose run --rm train            # retrain (e.g. after editing config)
+docker compose up --no-deps api mlflow   # serve the last model without retraining
+docker compose down -v                   # stop and delete all volumes (fresh start)
 ```
+
+The image itself only serves; it never trains on startup. If no trained model is in its volume, the API exits immediately instead of serving.
 
 ### Inference API
 
@@ -225,6 +246,8 @@ Invoke-RestMethod -Uri http://localhost:8000/explain -Method Post -Body $body -C
 
 Easiest of all, on any OS: open `http://localhost:8000/docs` in a browser for the interactive Swagger UI — click "Try it out" on any endpoint, no shell syntax required. (The `/predict` schema shown there is illustrative only — it uses a placeholder feature name, since the real names come from `/health`.)
 
+Requests are validated: a missing, unknown, non-numeric, `NaN`, or infinite feature value gets a `422` response listing every problem. `400` means the request was valid but the model can't serve it (e.g. `/explain` on a linear model).
+
 ---
 
 ## AI Agents & MCP
@@ -233,8 +256,11 @@ Easiest of all, on any OS: open `http://localhost:8000/docs` in a browser for th
 
 The agent answers natural-language questions about the trained model by calling tools (`list_features`, `predict`, `explain_prediction`, `get_latest_metrics`, `get_run_history`) — the same tools exposed by the MCP server below. It supports two backends:
 
+The agent and MCP server need extra packages that the core pipeline doesn't, kept in a separate lockfile:
+
 ```bash
 cd projects
+pip install -r requirements.txt -r requirements-agents.txt   # Windows: .venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-agents.txt
 
 # Claude API (default) — needs ANTHROPIC_API_KEY
 export ANTHROPIC_API_KEY=sk-...                                      # Windows: $env:ANTHROPIC_API_KEY = "sk-..."
@@ -312,13 +338,13 @@ Tools exposed: `list_features` · `get_latest_metrics` · `get_run_history` · `
 | **Machine Learning** | scikit-learn Pipelines, k-fold cross-validation, model comparison, feature importance |
 | **MLOps** | MLflow experiment tracking, model serialization (joblib), FastAPI + Uvicorn serving, Docker / Compose |
 | **AI Agents & GenAI** | Claude API tool use (manual agentic loop), MCP server + client, Ollama local LLM, SHAP explainability |
-| **Software Engineering** | Config-driven design, pytest suite + GitHub Actions CI, DRY shared modules, structured logging, clean repo |
+| **Software Engineering** | Config-driven design, pytest + coverage gates, GitHub Actions CI (Python matrix, Docker smoke test), ruff, CodeQL, Dependabot, pinned lockfiles, input validation, DRY shared modules |
 
 ---
 
 ## Stack
 
-Python · scikit-learn · pandas · NumPy · FastAPI · Uvicorn · Pydantic · MLflow · SHAP · Matplotlib · Seaborn · statsmodels · PyYAML · MCP · Anthropic Claude API · Ollama · pytest · Docker · GitHub Actions
+Python · scikit-learn · pandas · NumPy · FastAPI · Uvicorn · Pydantic · MLflow · SHAP · Matplotlib · Seaborn · statsmodels · PyYAML · MCP · Anthropic Claude API · Ollama · pytest · ruff · uv · Docker · GitHub Actions
 
 ---
 

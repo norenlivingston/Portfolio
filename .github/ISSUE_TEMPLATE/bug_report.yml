@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Security vulnerabilities: please report privately instead, see SECURITY.md."
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the full error output or traceback.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. cd projects
+        2. python run_pipeline.py
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version and OS
+      placeholder: "Python 3.11.9, Ubuntu 24.04"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Dataset build, EDA, Training / MLflow, API / serving, Docker, Agents / MCP, Docs, Other]
+    validations:
+      required: true

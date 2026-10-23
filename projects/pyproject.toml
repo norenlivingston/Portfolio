@@ -1,0 +1,39 @@
+# Project metadata + tool configuration. Dependencies are managed with pip
+# lockfiles (requirements*.in → requirements*.txt), not installed from here.
+[project]
+name = "ml-pipeline-portfolio"
+version = "0.1.0"
+description = "Reproducible, tested end-to-end ML pipeline: data, EDA, training, MLflow, serving, and an LLM agent layer."
+readme = "../README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.14"
+authors = [{ name = "Noren Livingston" }]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# E221/E241/E272: column-aligned assignments and dict literals are a deliberate style here.
+ignore = ["E221", "E241", "E272"]
+
+[tool.ruff.lint.per-file-ignores]
+# Import order is load-bearing: `tools` puts 03_mlops on sys.path for model_registry.
+"05_agents/agent.py" = ["I001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dataset_build", "eda", "pipeline", "model_registry", "serve", "tools", "agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["00_dataset_build", "01_eda", "02_ml_pipeline", "03_mlops", "05_agents"]
+# Entry points that need a live LLM / MCP client — exercised manually, not in CI.
+omit = ["05_agents/agent.py", "05_agents/mcp_server.py", "03_mlops/example_client.py"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true

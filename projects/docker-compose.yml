@@ -1,26 +1,61 @@
+# Startup order is explicit: `train` runs the full pipeline once and exits;
+# `api` and `mlflow` only start after it completes successfully, so neither
+# races an empty model directory or an uninitialised MLflow database.
+#
+#   docker compose up --build              # train, then serve + tracking UI
+#   docker compose run --rm train          # retrain against the running stack
+#   docker compose up --no-deps api mlflow # serve the last model, no retrain
+#   docker compose down -v                 # also delete volumes (model, runs)
+#
+# Named volumes intentionally persist the trained model, data, and MLflow runs
+# between `up`/`down` cycles; `down -v` resets everything.
+
+x-image: &image
+  build: .
+  image: ml-pipeline:local
+
 services:
-  api:
-    build: .
-    ports:
-      - "8000:8000"
+  train:
+    <<: *image
+    command: ["python", "run_pipeline.py", "--config", "config.docker.yaml"]
     volumes:
-      - pipeline-data:/app/data
+      - artifacts:/app/artifacts
       - mlflow-store:/app/mlflow_store
       - mlflow-artifacts:/app/mlruns
 
-  # Tracking UI reading the same store the api container just trained into.
+  api:
+    <<: *image
+    ports:
+      - "8000:8000"
+    volumes:
+      - artifacts:/app/artifacts:ro
+    depends_on:
+      train:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   mlflow:
-    build: .
-    command: mlflow ui --backend-store-uri sqlite:////app/mlflow_store/mlruns.db --host 0.0.0.0 --port 5000
+    <<: *image
+    command: ["mlflow", "ui", "--backend-store-uri", "sqlite:////app/mlflow_store/mlruns.db", "--host", "0.0.0.0", "--port", "5000"]
     ports:
       - "5000:5000"
     volumes:
       - mlflow-store:/app/mlflow_store
       - mlflow-artifacts:/app/mlruns
     depends_on:
-      - api
+      train:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
 volumes:
-  pipeline-data:
+  artifacts:
   mlflow-store:
   mlflow-artifacts:

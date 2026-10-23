@@ -102,3 +102,31 @@ def test_run_eda_test_set_does_not_influence_feature_selection_or_outlier_bounds
     pd.testing.assert_frame_equal(
         train_a.reset_index(drop=True), train_b.reset_index(drop=True)
     )
+
+
+def test_remove_strategy_never_drops_test_rows(tiny_config):
+    """Under `remove`, outlier rows are dropped from training only. The test
+    split keeps every row (clipped to train-fitted bounds) so the hold-out
+    evaluation population is not changed by cleaning."""
+    tiny_config["eda"]["outlier_strategy"] = "remove"
+    tiny_config["eda"]["outlier_threshold"] = 0.5  # tight bounds so outliers certainly exist
+    build_dataset(tiny_config)
+    train, test = run_eda(tiny_config)
+
+    n_test = round(tiny_config["data"]["n_samples"] * tiny_config["pipeline"]["test_size"])
+    assert len(test) == n_test
+    assert len(train) < tiny_config["data"]["n_samples"] - n_test
+
+
+def test_outlier_transform_without_row_drop_clips_to_train_bounds():
+    from eda import OutlierTreatment
+
+    train = pd.DataFrame({"Feature_1": [1.0, 2.0, 3.0, 4.0, 5.0], "Target": range(5)})
+    test = pd.DataFrame({"Feature_1": [-100.0, 3.0, 100.0], "Target": range(3)})
+
+    treatment = OutlierTreatment("iqr", 1.5, "remove").fit(train)
+    lo, hi = treatment.bounds_["Feature_1"]
+    cleaned = treatment.transform(test, allow_row_drop=False)
+
+    assert len(cleaned) == 3
+    assert cleaned["Feature_1"].tolist() == [lo, 3.0, hi]

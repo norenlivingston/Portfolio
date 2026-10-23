@@ -1,0 +1,41 @@
+# Container configuration — identical to config.yaml except that every
+# generated artifact lives under /app/artifacts (a named volume shared by the
+# train/api services) and the MLflow store under /app/mlflow_store.
+# tests/test_config.py enforces that only those path keys differ.
+
+data:
+  raw_path:               "/app/artifacts/data/synthetic_regression_dataset.csv"
+  processed_train_path:   "/app/artifacts/data/cleaned_synthetic_regression_dataset_train.csv"
+  processed_test_path:    "/app/artifacts/data/cleaned_synthetic_regression_dataset_test.csv"
+  n_samples:      2000
+  n_features:     20
+  random_seed:    42
+
+eda:
+  output_dir:        "/app/artifacts/eda_visualizations"
+  top_n_features:    8
+  outlier_method:    "iqr"         # iqr | zscore
+  outlier_threshold: 1.5
+  outlier_strategy:  "iqr_bound"  # mean | median | iqr_bound | remove
+
+pipeline:
+  test_size:   0.2
+  cv_folds:    5
+  random_seed: 42
+  models:
+    random_forest:
+      n_estimators: 100
+      max_depth:    ~              # null = no depth limit
+    linear_regression: {}
+
+mlops:
+  model_path:  "/app/artifacts/best_model.pkl"
+  metrics_log: "/app/artifacts/metrics_log.json"
+  host:        "0.0.0.0"
+  port:        8000
+  mlflow_tracking_uri:  "sqlite:////app/mlflow_store/mlruns.db"  # local store; point at a server URI to share runs
+  mlflow_experiment:    "ml-pipeline"
+
+agents:
+  anthropic_model: "claude-opus-5"      # requires ANTHROPIC_API_KEY
+  ollama_model:    "qwen2.5"            # free, local — requires `ollama pull qwen2.5`

@@ -5,11 +5,12 @@ evaluates on a hold-out test set, and persists the pipeline + a metrics log.
 """
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import joblib
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import mlflow
@@ -45,6 +46,32 @@ def _build_preprocessor(numeric_features: list, categorical_features: list) -> C
     ])
 
 
+def source_feature_names(preprocessor: ColumnTransformer) -> list:
+    """Name of the raw input column behind each column the fitted preprocessor
+    outputs. Numeric features map 1:1; a one-hot encoded feature expands to one
+    output column per category, all mapped back to the same source name, so
+    per-column importances/SHAP values can be summed per raw feature."""
+    sources = []
+    for _, transformer, cols in preprocessor.transformers_:
+        if transformer == "drop" or len(cols) == 0:
+            continue
+        encoder = transformer.named_steps.get("encoder") if isinstance(transformer, Pipeline) else None
+        if encoder is not None and hasattr(encoder, "categories_"):
+            for col, categories in zip(cols, encoder.categories_, strict=True):
+                sources.extend([col] * len(categories))
+        else:
+            sources.extend(cols)
+    return sources
+
+
+def aggregate_by_source(values, sources: list) -> dict:
+    """Sum per-output-column values into one value per raw input feature."""
+    totals = {}
+    for source, value in zip(sources, values, strict=True):
+        totals[source] = totals.get(source, 0.0) + float(value)
+    return totals
+
+
 def _candidate_models(config: dict) -> dict:
     rf = config["pipeline"]["models"]["random_forest"]
     return {
@@ -57,17 +84,18 @@ def _candidate_models(config: dict) -> dict:
     }
 
 
-def _save_feature_importance(pipeline: Pipeline, feature_names: list, out_path: str) -> None:
+def _save_feature_importance(pipeline: Pipeline, out_path: str) -> None:
     model = pipeline.named_steps["regressor"]
     if not hasattr(model, "feature_importances_"):
         return
 
-    importances = model.feature_importances_
-    idx = np.argsort(importances)[::-1]
+    sources     = source_feature_names(pipeline.named_steps["preprocessor"])
+    importances = aggregate_by_source(model.feature_importances_, sources)
+    ranked      = sorted(importances.items(), key=lambda kv: kv[1], reverse=True)
 
     plt.figure(figsize=(10, 5))
-    plt.bar(range(len(importances)), importances[idx], color="steelblue")
-    plt.xticks(range(len(importances)), [feature_names[i] for i in idx], rotation=45, ha="right")
+    plt.bar(range(len(ranked)), [v for _, v in ranked], color="steelblue")
+    plt.xticks(range(len(ranked)), [name for name, _ in ranked], rotation=45, ha="right")
     plt.title("Feature Importances")
     plt.tight_layout()
     plt.savefig(out_path, dpi=100)
@@ -147,7 +175,7 @@ def train_pipeline(config: dict) -> dict:
 
         # ── Feature importance plot ─────────────────────────────────────────────
         importance_path = "02_ml_pipeline/feature_importances.png"
-        _save_feature_importance(best_pipeline, numeric_features, importance_path)
+        _save_feature_importance(best_pipeline, importance_path)
 
         # ── MLflow tracking ──────────────────────────────────────────────────────
         mlflow.log_params({
@@ -171,11 +199,14 @@ def train_pipeline(config: dict) -> dict:
             artifact_path="model",
             serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_CLOUDPICKLE,
         )
-        log.info("MLflow run logged → %s (experiment: %s)", run.info.run_id, cfg_mlfl.get("mlflow_experiment", "ml-pipeline"))
+        log.info(
+            "MLflow run logged → %s (experiment: %s)",
+            run.info.run_id, cfg_mlfl.get("mlflow_experiment", "ml-pipeline"),
+        )
 
         # ── Append run to metrics log (used by the agent/MCP tools) ─────────────
         metrics = {
-            "timestamp":     datetime.now(timezone.utc).isoformat(),
+            "timestamp":     datetime.now(UTC).isoformat(),
             "best_model":    best_name,
             "cv_r2_mean":    float(best_scores.mean()),
             "cv_r2_std":     float(best_scores.std()),

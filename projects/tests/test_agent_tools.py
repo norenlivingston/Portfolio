@@ -23,7 +23,7 @@ def test_to_ollama_tools_preserves_names_and_schema():
     ollama_tools = to_ollama_tools()
 
     assert len(ollama_tools) == len(ANTHROPIC_TOOLS)
-    for anthropic_tool, ollama_tool in zip(ANTHROPIC_TOOLS, ollama_tools):
+    for anthropic_tool, ollama_tool in zip(ANTHROPIC_TOOLS, ollama_tools, strict=True):
         assert ollama_tool["type"] == "function"
         assert ollama_tool["function"]["name"] == anthropic_tool["name"]
         assert ollama_tool["function"]["parameters"] == anthropic_tool["input_schema"]

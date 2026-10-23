@@ -1,0 +1,7 @@
+# Default reviewer for everything: code, workflows, and documentation.
+* @norenlivingston
+
+# Listed explicitly so ownership survives if the default rule above changes.
+/.github/workflows/ @norenlivingston
+/projects/          @norenlivingston
+/docs/              @norenlivingston

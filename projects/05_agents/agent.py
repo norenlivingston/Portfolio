@@ -19,7 +19,8 @@ Usage (from projects/ directory):
 import argparse
 import json
 
-from tools import ANTHROPIC_TOOLS, TOOL_REGISTRY, to_ollama_tools  # noqa: E402 (adds model_registry to sys.path)
+# Order matters: importing `tools` puts 03_mlops (model_registry) on sys.path.
+from tools import ANTHROPIC_TOOLS, TOOL_REGISTRY, to_ollama_tools
 from model_registry import get_config
 
 SYSTEM_PROMPT = (
