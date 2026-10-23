@@ -4,6 +4,6 @@
 -c requirements.txt
 
 mcp~=1.0
-anthropic~=0.40
+anthropic~=1.16
 # For --provider ollama, also install the Ollama app itself: https://ollama.com
 ollama~=0.3
