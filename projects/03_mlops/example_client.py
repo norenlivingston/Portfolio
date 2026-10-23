@@ -47,6 +47,8 @@ def main() -> None:
 
     prediction = _post("/predict", {"features": features})
     print("/predict ->", prediction)
+    if "prediction" not in prediction:
+        sys.exit("/predict did not return a prediction")
 
     explanation = _post("/explain", {"features": features})
     print("/explain ->", explanation)

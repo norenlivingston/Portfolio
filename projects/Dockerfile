@@ -9,7 +9,8 @@ COPY . .
 
 EXPOSE 8000
 
-# Train on container start (keeps the image reproducible from source — no
-# pretrained artifacts baked in) then serve. `mlruns.db`/`data/` persist to
-# whatever volume is mounted at /app, if any.
-CMD ["sh", "-c", "python run_pipeline.py && python 03_mlops/serve.py"]
+# Serving only. Training is a separate one-shot step (the `train` service in
+# docker-compose.yml, or `python run_pipeline.py`), so starting the API never
+# silently retrains. With no trained model present the API fails fast.
+ENV PIPELINE_CONFIG=config.docker.yaml
+CMD ["python", "03_mlops/serve.py"]
