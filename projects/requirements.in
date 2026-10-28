@@ -1,20 +1,20 @@
 # Core pipeline + serving dependencies (loose ranges).
 # The pinned lockfile `requirements.txt` is generated from this file — edit
 # here, then regenerate (see CONTRIBUTING.md).
-numpy~=2.2.2
+numpy~=2.3.5
 pandas~=2.2.3
-matplotlib~=3.10.0
+matplotlib~=3.11.2
 seaborn~=0.13.2
-statsmodels~=0.14.4
-joblib~=1.4.2
-scikit-learn~=1.6.1
+statsmodels~=0.15.0
+joblib~=1.6.0
+scikit-learn~=1.9.1
 pyyaml~=6.0
 fastapi~=0.162
 # Transitive via fastapi, floored explicitly: starlette 0.46.x has high-severity
 # advisories (GHSA-7f5h-v6xp-fcq8, GHSA-wqp7-x3pw-xc5r, GHSA-82w8-qh3p-5jfq).
-starlette>=1.9
-uvicorn~=0.32.0
-pydantic~=2.10.0
+starlette>=1.10.0
+uvicorn~=0.54.0
+pydantic~=2.14.1
 
 # 02_ml_pipeline — experiment tracking
 mlflow~=3.1
