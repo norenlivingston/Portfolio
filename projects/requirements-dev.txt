@@ -49,7 +49,7 @@ certifi==2026.10.23
     #   httpcore
     #   httpx
     #   requests
-cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+cffi==2.1.1
     # via
     #   -c requirements.txt
     #   cryptography
@@ -66,22 +66,14 @@ click==8.5.0
 cloudpickle==3.1.2
     # via
     #   -c requirements.txt
+    #   joblib
     #   mlflow-skinny
     #   shap
-colorama==0.4.6 ; sys_platform == 'win32'
-    # via
-    #   -c requirements.txt
-    #   pytest
-    #   tqdm
-contourpy==1.3.3 ; python_full_version < '3.12'
+contourpy==1.3.3
     # via
     #   -c requirements.txt
     #   matplotlib
-contourpy==1.4.0 ; python_full_version >= '3.12'
-    # via
-    #   -c requirements.txt
-    #   matplotlib
-coverage==7.17.0
+coverage[toml]==7.17.0
     # via pytest-cov
 cryptography==50.0.2
     # via
@@ -119,6 +111,10 @@ fonttools==4.67.0
     # via
     #   -c requirements.txt
     #   matplotlib
+formulaic==1.2.2
+    # via
+    #   -c requirements.txt
+    #   statsmodels
 frozenlist==1.8.0
     # via
     #   -c requirements.txt
@@ -149,7 +145,7 @@ graphql-relay==3.2.0
     # via
     #   -c requirements.txt
     #   graphene
-gunicorn==26.2.0 ; sys_platform != 'win32'
+gunicorn==26.2.0
     # via
     #   -c requirements.txt
     #   mlflow
@@ -179,6 +175,10 @@ importlib-metadata==9.1.0
     #   mlflow-skinny
 iniconfig==2.3.1
     # via pytest
+interface-meta==2.0.1
+    # via
+    #   -c requirements.txt
+    #   formulaic
 itsdangerous==2.2.0
     # via
     #   -c requirements.txt
@@ -187,7 +187,7 @@ jinja2==3.1.6
     # via
     #   -c requirements.txt
     #   flask
-joblib==1.4.2
+joblib==1.6.0
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -196,7 +196,7 @@ kiwisolver==1.5.1
     # via
     #   -c requirements.txt
     #   matplotlib
-llvmlite==0.45.1 ; python_full_version < '3.12'
+llvmlite==0.45.1
     # via
     #   -c requirements.txt
     #   numba
@@ -212,7 +212,7 @@ markupsafe==3.0.4
     #   jinja2
     #   mako
     #   werkzeug
-matplotlib==3.10.9
+matplotlib==3.11.2
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -235,15 +235,21 @@ multidict==7.1.0
     #   -c requirements.txt
     #   aiohttp
     #   yarl
-numba==0.62.1 ; python_full_version < '3.12'
+narwhals==2.28.0
+    # via
+    #   -c requirements.txt
+    #   formulaic
+    #   scikit-learn
+numba==0.62.1
     # via
     #   -c requirements.txt
     #   shap
-numpy==2.2.6
+numpy==2.3.5
     # via
     #   -c requirements.txt
     #   -r requirements.in
     #   contourpy
+    #   formulaic
     #   matplotlib
     #   mlflow
     #   numba
@@ -292,6 +298,7 @@ pandas==2.2.3
     # via
     #   -c requirements.txt
     #   -r requirements.in
+    #   formulaic
     #   mlflow
     #   seaborn
     #   shap
@@ -336,18 +343,18 @@ pyasn1-modules==0.4.2
     # via
     #   -c requirements.txt
     #   google-auth
-pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pycparser==3.12
     # via
     #   -c requirements.txt
     #   cffi
-pydantic==2.10.6
+pydantic==2.14.1
     # via
     #   -c requirements.txt
     #   -r requirements.in
     #   fastapi
     #   mlflow-skinny
     #   mlflow-tracing
-pydantic-core==2.27.2
+pydantic-core==2.50.1
     # via
     #   -c requirements.txt
     #   pydantic
@@ -376,10 +383,6 @@ pytz==2026.5
     # via
     #   -c requirements.txt
     #   pandas
-pywin32==312 ; sys_platform == 'win32'
-    # via
-    #   -c requirements.txt
-    #   docker
 pyyaml==6.0.3
     # via
     #   -c requirements.txt
@@ -393,24 +396,17 @@ requests==2.34.2
     #   mlflow-skinny
 ruff==0.17.2
     # via -r requirements-dev.in
-scikit-learn==1.6.1
+scikit-learn==1.9.1
     # via
     #   -c requirements.txt
     #   -r requirements.in
     #   mlflow
     #   shap
     #   skops
-scipy==1.17.1 ; python_full_version < '3.12'
+scipy==1.17.1
     # via
     #   -c requirements.txt
-    #   mlflow
-    #   scikit-learn
-    #   shap
-    #   skops
-    #   statsmodels
-scipy==1.18.1 ; python_full_version >= '3.12'
-    # via
-    #   -c requirements.txt
+    #   formulaic
     #   mlflow
     #   scikit-learn
     #   shap
@@ -420,11 +416,7 @@ seaborn==0.13.2
     # via
     #   -c requirements.txt
     #   -r requirements.in
-shap==0.51.0 ; python_full_version < '3.12'
-    # via
-    #   -c requirements.txt
-    #   -r requirements.in
-shap==0.54.1 ; python_full_version >= '3.12'
+shap==0.51.0
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -453,13 +445,13 @@ sqlparse==0.6.0
     # via
     #   -c requirements.txt
     #   mlflow-skinny
-starlette==1.9.0
+starlette==1.10.0
     # via
     #   -c requirements.txt
     #   -r requirements.in
     #   fastapi
     #   mlflow-skinny
-statsmodels==0.14.6
+statsmodels==0.15.0
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -479,6 +471,7 @@ typing-extensions==4.16.0
     #   alembic
     #   anyio
     #   fastapi
+    #   formulaic
     #   graphene
     #   mlflow-skinny
     #   opentelemetry-api
@@ -494,6 +487,7 @@ typing-inspection==0.4.4
     # via
     #   -c requirements.txt
     #   fastapi
+    #   pydantic
 tzdata==2026.5
     # via
     #   -c requirements.txt
@@ -505,15 +499,11 @@ urllib3==2.8.0
     #   databricks-sdk
     #   docker
     #   requests
-uvicorn==0.32.1
+uvicorn==0.54.0
     # via
     #   -c requirements.txt
     #   -r requirements.in
     #   mlflow-skinny
-waitress==3.0.2 ; sys_platform == 'win32'
-    # via
-    #   -c requirements.txt
-    #   mlflow
 wcwidth==0.9.3
     # via
     #   -c requirements.txt
@@ -523,6 +513,10 @@ werkzeug==3.1.9
     #   -c requirements.txt
     #   flask
     #   flask-cors
+wrapt==2.5.1
+    # via
+    #   -c requirements.txt
+    #   formulaic
 yarl==1.25.1
     # via
     #   -c requirements.txt
